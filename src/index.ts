@@ -99,3 +99,6 @@ export * from './ai/engineProxy';
 export * from './ai/engineAdmin';
 export * from './ai/hooks/useAIAnswer';
 export * from './ai/hooks/useEngineAIStatus';
+
+export * from './discovery/capability';
+export * from './ai/capabilityPlugin';

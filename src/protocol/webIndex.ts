@@ -59,7 +59,7 @@ const LANGUAGE_RE = /^[a-z]{2}$/;
 const COUNTRY_RE = /^[A-Z]{2}$/;
 
 /** Registered keyword-shaped extension tags (spec §9.2). */
-const KEYWORD_EXTENSIONS = ['type', 'platform', 'category', 'network'] as const;
+const KEYWORD_EXTENSIONS = ['type', 'platform', 'category', 'network', 'role', 'proto'] as const;
 
 /** All registered extension tags this module knows how to build/parse. */
 const EXTENSION_TAGS = [...KEYWORD_EXTENSIONS, 'country', 'mime'] as const;
@@ -154,6 +154,13 @@ export interface IndexObservationInput {
   country?: string;
   /** Document media type, e.g. application/pdf. */
   mime?: string;
+  /**
+   * Optional service-document role (spec v1.3): agent, tool, model, api,
+   * compute, dataset, gateway. Omitted from ordinary web observations.
+   */
+  role?: string;
+  /** Optional transport keyword: mcp, http, contextvm, nostr, a2a. */
+  proto?: string;
 }
 
 export interface UnsignedIndexEvent {

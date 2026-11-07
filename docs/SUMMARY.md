@@ -34,3 +34,4 @@
 * [Licensing](licensing.md)
 * [Extraction map](EXTRACTION-MAP.md)
 * [Query syntax (moved)](SEARCH-QUERIES.md)
+* [Capability discovery](guides/capability-discovery.md)

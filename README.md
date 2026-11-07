@@ -159,3 +159,8 @@ should be assumed for any derivative, open or closed.
 
 Protocol compatibility always takes priority over software architecture: the
 core can ship fixes and features while the wire format stays frozen.
+
+
+## Capability discovery
+
+Kind 39697 is unchanged. Optional `role` and `proto` tags, plus `suggestCapabilities` for the AI layer, are described in [`docs/guides/capability-discovery.md`](docs/guides/capability-discovery.md).

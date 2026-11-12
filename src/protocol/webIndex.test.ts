@@ -305,6 +305,29 @@ describe('parseIndexEvent', () => {
     expect(parseIndexEvent(badContent)).toBeNull();
   });
 
+  it('rejects duplicate required tags and malformed d/alt values (SIP-01 §5)', async () => {
+    const template = (await buildIndexEvent({
+      url: 'https://example.com/page',
+      title: 'T',
+    }))!;
+
+    const duplicateD = await makeEvent({ tags: [...template.tags, ['d', template.tags.find(([n]) => n === 'd')![1]]] });
+    expect(parseIndexEvent(duplicateD)).toBeNull();
+
+    const malformedD = await makeEvent({
+      tags: template.tags.map((tag) => tag[0] === 'd' ? ['d', 'widx:not-a-valid-document-id'] : tag),
+    });
+    expect(parseIndexEvent(malformedD)).toBeNull();
+
+    const emptyAlt = await makeEvent({
+      tags: template.tags.map((tag) => tag[0] === 'alt' ? ['alt', '   '] : tag),
+    });
+    expect(parseIndexEvent(emptyAlt)).toBeNull();
+
+    const duplicateAlt = await makeEvent({ tags: [...template.tags, ['alt', 'second description']] });
+    expect(parseIndexEvent(duplicateAlt)).toBeNull();
+  });
+
   it('rejects events whose u tag fails the allowlist', async () => {
     const event = await makeEvent({
       tags: (await buildIndexEvent({ url: 'https://example.com/page', title: 'T' }))!.tags.map(

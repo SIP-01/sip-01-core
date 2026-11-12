@@ -265,3 +265,102 @@ export async function decryptNip51PrivateItems(
   }
   return parsed as string[][];
 }
+
+
+export interface Nip51BookmarkMutationInput {
+  kind: Nip51BookmarkListKind;
+  dTag?: string;
+  title?: string;
+  addPublic?: Nip51BookmarkReference[];
+  removePublic?: Nip51BookmarkReference[];
+  addPrivate?: Nip51BookmarkReference[];
+  removePrivate?: Nip51BookmarkReference[];
+}
+
+function sameReferenceTag(left: string[], right: string[]): boolean {
+  return left[0] === right[0] && left[1] === right[1];
+}
+
+function applyReferenceMutation(
+  source: string[][],
+  additions: Nip51BookmarkReference[],
+  removals: Nip51BookmarkReference[],
+): string[][] {
+  let output = source.map((tag) => [...tag]);
+
+  for (const reference of removals) {
+    const removeTags = referenceToTags(reference);
+    for (const target of removeTags) {
+      if (target[0] === 'k' && target[1] === 'web') continue;
+      output = output.filter((tag) => !sameReferenceTag(tag, target));
+    }
+    if (reference.type === 'web') {
+      const remainingWebIdentifiers = output.filter((tag) => tag[0] === 'i');
+      if (remainingWebIdentifiers.length === 0) {
+        output = output.filter((tag) => !(tag[0] === 'k' && tag[1] === 'web'));
+      }
+    }
+  }
+
+  for (const reference of additions) {
+    for (const target of referenceToTags(reference)) {
+      if (!output.some((tag) => sameReferenceTag(tag, target))) output.push([...target]);
+    }
+  }
+
+  return output;
+}
+
+/**
+ * Safely update a NIP-51 list while preserving unrelated and unknown tags.
+ * Existing private content is always decrypted before a replacement is
+ * generated; a locked/unsupported signer therefore cannot erase private data.
+ */
+export async function mutateNip51BookmarkListDraft(
+  existingEvent: NostrEvent | null,
+  ownerPubkey: string,
+  signer: Nip44SelfSigner,
+  input: Nip51BookmarkMutationInput,
+): Promise<{ kind: number; content: string; tags: string[][] }> {
+  if (!/^[0-9a-f]{64}$/i.test(ownerPubkey)) throw new Error('Owner pubkey must be 32-byte hex.');
+  if (input.kind === NIP51_BOOKMARK_SET_KIND && !input.dTag?.trim()) {
+    throw new Error('NIP-51 bookmark sets (kind 30003) require a non-empty d tag.');
+  }
+  if (existingEvent && existingEvent.kind !== input.kind) {
+    throw new Error('Existing NIP-51 list kind does not match the requested list.');
+  }
+  if (
+    existingEvent &&
+    input.kind === NIP51_BOOKMARK_SET_KIND &&
+    getTagValue(existingEvent, 'd') !== input.dTag
+  ) {
+    throw new Error('Existing NIP-51 bookmark set has a different d tag.');
+  }
+
+  const publicTags = existingEvent ? existingEvent.tags.map((tag) => [...tag]) : [];
+  let privateTags: string[][] = [];
+  if (existingEvent?.content) {
+    if (!signer || typeof signer.decrypt !== 'function' || typeof signer.encrypt !== 'function') {
+      throw new Error('NIP-44 signer support is required to preserve private bookmark items.');
+    }
+    privateTags = await decryptNip51PrivateItems(existingEvent, ownerPubkey, signer);
+  }
+
+  let tags = publicTags;
+  if (input.kind === NIP51_BOOKMARK_SET_KIND) {
+    if (!tags.some(([name]) => name === 'd')) tags.push(['d', input.dTag!.trim()]);
+    if (input.title !== undefined) {
+      tags = tags.filter(([name]) => name !== 'title');
+      if (input.title.trim()) tags.push(['title', input.title.trim()]);
+    }
+  }
+
+  tags = applyReferenceMutation(tags, input.addPublic ?? [], input.removePublic ?? []);
+  privateTags = applyReferenceMutation(privateTags, input.addPrivate ?? [], input.removePrivate ?? []);
+
+  const content = privateTags.length > 0
+    ? await signer.encrypt(ownerPubkey.toLowerCase(), JSON.stringify(privateTags))
+    : '';
+
+  return { kind: input.kind, content, tags };
+}

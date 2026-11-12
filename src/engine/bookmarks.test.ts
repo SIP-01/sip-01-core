@@ -5,6 +5,7 @@ import {
   normalizeNip73WebIdentifier,
   parseNipB0Bookmark,
   buildNip51BookmarkListDraft,
+  mutateNip51BookmarkListDraft,
   parseNip51BookmarkList,
   decryptNip51PrivateItems,
 } from './bookmarks';
@@ -70,6 +71,64 @@ describe('NIP-51 public and private bookmark lists', () => {
       publicItems: [],
       privateItems: [],
     }, owner, signer)).rejects.toThrow('require a non-empty d tag');
+  });
+
+  it('read-modify-writes a list while preserving existing public/private and unknown tags', async () => {
+    const privateTags = [['i', 'https://private-old.example/'], ['k', 'web']];
+    let encrypted = JSON.stringify(privateTags);
+    const signer = {
+      encrypt: async (_peer: string, plaintext: string) => {
+        encrypted = plaintext;
+        return 'next-ciphertext';
+      },
+      decrypt: async (_peer: string, ciphertext: string) => {
+        expect(ciphertext).toBe('old-ciphertext');
+        return JSON.stringify(privateTags);
+      },
+    };
+    const existing = {
+      kind: 10003,
+      pubkey: owner,
+      id: 'f'.repeat(64),
+      created_at: 100,
+      tags: [['e', '1'.repeat(64)], ['custom', 'preserve-me']],
+      content: 'old-ciphertext',
+      sig: 'e'.repeat(128),
+    };
+    const draft = await mutateNip51BookmarkListDraft(existing, owner, signer, {
+      kind: 10003,
+      addPublic: [{ type: 'web', url: 'https://public-new.example' }],
+      addPrivate: [{ type: 'web', url: 'https://private-new.example' }],
+      removePrivate: [{ type: 'web', url: 'https://private-old.example' }],
+    });
+    expect(draft.tags).toContainEqual(['e', '1'.repeat(64)]);
+    expect(draft.tags).toContainEqual(['custom', 'preserve-me']);
+    expect(draft.tags).toContainEqual(['i', 'https://public-new.example/']);
+    expect(draft.tags.some((tag) => tag[0] === 'i' && tag[1]?.includes('private'))).toBe(false);
+    expect(JSON.parse(encrypted)).toEqual([
+      ['i', 'https://private-new.example/'],
+      ['k', 'web'],
+    ]);
+  });
+
+  it('refuses to overwrite private content when NIP-44 decryption fails', async () => {
+    const existing = {
+      kind: 10003,
+      pubkey: owner,
+      id: 'f'.repeat(64),
+      created_at: 100,
+      tags: [],
+      content: 'unreadable-ciphertext',
+      sig: 'e'.repeat(128),
+    };
+    const signer = {
+      encrypt: async () => 'new-ciphertext',
+      decrypt: async () => { throw new Error('signer locked'); },
+    };
+    await expect(mutateNip51BookmarkListDraft(existing, owner, signer, {
+      kind: 10003,
+      addPublic: [{ type: 'web', url: 'https://public.example' }],
+    })).rejects.toThrow('signer locked');
   });
 
   it('decodes public and private references separately', async () => {

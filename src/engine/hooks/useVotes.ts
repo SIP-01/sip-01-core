@@ -1,9 +1,9 @@
 /**
- * Vote hooks — NIP-25 reactions and Web-of-Trust-ready tallies.
+ * Vote hooks — NIP-25 reactions and Web-of-Trust-aware tallies.
  * Native Nostr events use kind 7. External web documents use kind 17 with
  * NIP-73 k/i tags. Legacy kind-7/r URL reactions remain readable.
  */
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { finalizeEvent } from 'nostr-tools/pure';
 import { type NostrEvent, type NostrFilter } from '@nostrify/nostrify';
@@ -12,6 +12,7 @@ import { queryRelayPool, publishToRelayPool, getSearchRelay } from '@/lib/search
 import { getIndexRelayUrls, getSearchRelayUrls } from '@/lib/appRelays';
 import { getIndexerIdentity } from '@/protocol/indexerIdentity';
 import { useEngineRuntime } from '@/engine/runtime';
+import { useWebOfTrustAssertions } from '@/engine/hooks/useWebOfTrustAssertions';
 import {
   VOTE_KIND,
   EXTERNAL_REACTION_KIND,
@@ -23,6 +24,12 @@ import {
   type VoteTally,
   type VoteTarget,
 } from '@/engine/votes';
+import {
+  evaluateWebOfTrust,
+  resolveEffectiveWebOfTrustPolicy,
+  webOfTrustVoteWeight,
+  type WebOfTrustLookupTarget,
+} from '@/engine/webOfTrust';
 
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
@@ -34,16 +41,16 @@ function getVoteRelay(url: string) {
   return getSearchRelay(url);
 }
 
-/** Batch-fetch native and external NIP-25 reactions for visible targets. */
+/** Batch-fetch reactions, then apply the active platform/personal WoT to voters. */
 export function useVoteCounts(targetKeys: string[]) {
   const runtime = useEngineRuntime();
   const key = targetKeys.slice(0, 20).sort().join(',');
 
-  return useQuery({
-    queryKey: ['vote-tallies', key, runtime.voteAuthorWeights ? [...runtime.voteAuthorWeights.entries()].sort(([a], [b]) => a.localeCompare(b)) : 'raw'],
+  const reactionsQuery = useQuery<NostrEvent[]>({
+    queryKey: ['vote-events', key],
     queryFn: async ({ signal }) => {
       const keys = key.split(',').filter(Boolean);
-      if (keys.length === 0) return new Map<string, VoteTally>();
+      if (keys.length === 0) return [];
 
       const eventIds = keys.filter((value) => value.startsWith('e:')).map((value) => value.slice(2));
       const urls = keys.filter((value) => value.startsWith('u:')).map((value) => value.slice(2));
@@ -57,7 +64,7 @@ export function useVoteCounts(targetKeys: string[]) {
         // Read legacy URL reactions during migration; never publish this shape.
         filters.push({ kinds: [VOTE_KIND], '#r': urls, limit: 500 });
       }
-      if (filters.length === 0) return new Map<string, VoteTally>();
+      if (filters.length === 0) return [];
 
       const relayUrls = [...new Set([...getIndexRelayUrls(), ...getSearchRelayUrls()])];
       const settled = await queryRelayPool(relayUrls, filters, { signal, timeoutMs: 6000 });
@@ -67,12 +74,59 @@ export function useVoteCounts(targetKeys: string[]) {
           if (!events.has(event.id)) events.set(event.id, event);
         }
       }
-      return tallyVotes([...events.values()], { authorWeights: runtime.voteAuthorWeights });
+      return [...events.values()];
     },
     enabled: key.length > 0,
     staleTime: 30_000,
     retry: 0,
   });
+
+  // NIP-85 kind 30382 assertions describe voter trust. Fetch them from the
+  // same selected platform/personal providers used by the search policy.
+  const voterTargets = useMemo<WebOfTrustLookupTarget[]>(() => {
+    const seen = new Set<string>();
+    return (reactionsQuery.data ?? []).flatMap((event) => {
+      if (!/^[0-9a-f]{64}$/i.test(event.pubkey) || seen.has(event.pubkey)) return [];
+      seen.add(event.pubkey);
+      return [{
+        key: '30382:' + event.pubkey.toLowerCase(),
+        kind: 30382,
+        identifier: event.pubkey.toLowerCase(),
+      }];
+    });
+  }, [reactionsQuery.data]);
+  const voterAssertions = useWebOfTrustAssertions(voterTargets);
+
+  const effectivePolicy = useMemo(() => {
+    const config = runtime.webOfTrust;
+    const personalPreference = config?.personalProviders?.length ? config.personalPreference : undefined;
+    return config ? resolveEffectiveWebOfTrustPolicy(config.adminPolicy, personalPreference) : null;
+  }, [runtime.webOfTrust]);
+
+  const data = useMemo(() => {
+    const events = reactionsQuery.data ?? [];
+    if (runtime.voteAuthorWeights) {
+      return tallyVotes(events, { authorWeights: runtime.voteAuthorWeights });
+    }
+    if (!effectivePolicy || effectivePolicy.mode === 'off') return tallyVotes(events);
+
+    const weights = new Map<string, number>();
+    for (const event of events) {
+      if (weights.has(event.pubkey)) continue;
+      const key = '30382:' + event.pubkey.toLowerCase();
+      const assertion = voterAssertions.data?.ranks.get(key);
+      const decision = evaluateWebOfTrust(effectivePolicy, {
+        platformRank: assertion?.platformRank,
+        personalRank: assertion?.personalRank,
+        platformReady: voterAssertions.data?.platformReady.has(30382) ?? false,
+        personalReady: voterAssertions.data?.personalReady.has(30382) ?? false,
+      });
+      weights.set(event.pubkey, webOfTrustVoteWeight(decision));
+    }
+    return tallyVotes(events, { authorWeights: weights });
+  }, [reactionsQuery.data, runtime.voteAuthorWeights, effectivePolicy, voterAssertions.data]);
+
+  return { ...reactionsQuery, data };
 }
 
 /** Publish NIP-25 reactions. Anonymous (device identity) by default. */
@@ -119,7 +173,7 @@ export function useVoteActions() {
     }
 
     setMyVote(target.key, direction);
-    void queryClient.invalidateQueries({ queryKey: ['vote-tallies'] });
+    void queryClient.invalidateQueries({ queryKey: ['vote-events'] });
     return target;
   }, [asIdentity, runtime.userSigner, queryClient]);
 

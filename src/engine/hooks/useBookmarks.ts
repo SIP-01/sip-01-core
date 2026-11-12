@@ -53,7 +53,7 @@ async function queryEvents(
   const successful = settled.filter(
     (result): result is PromiseFulfilledResult<NostrEvent[]> => result.status === 'fulfilled',
   );
-  if (successful.length === 0) throw new Error('Could not read the bookmark list from any configured read relay.');
+  if (successful.length !== relays.length) throw new Error('Could not read every configured NIP-65 read relay; refusing to update a possibly stale bookmark list.');
 
   const events = new Map<string, NostrEvent>();
   for (const result of successful) {

@@ -275,6 +275,10 @@ export function useProviderSearch({
       : baseResults;
     const policy = effectiveWebOfTrustPolicy;
     if (!policy || policy.mode === 'off') return moderated;
+    const activeMode: 'platform' | 'personal' | 'combined' =
+      policy.mode === 'platform' || policy.mode === 'personal' || policy.mode === 'combined'
+        ? policy.mode
+        : 'platform';
 
     const decisions = moderated.map((result, index) => {
       const target = nip85TargetForSearchResult(result);
@@ -300,7 +304,7 @@ export function useProviderSearch({
     return decisions.map((entry) => ({
       ...entry.result,
       trust: {
-        mode: policy.mode,
+        mode: activeMode,
         tier: entry.decision.trustTier,
         pending: entry.decision.pending,
         reason: entry.decision.reason === 'blocked' || entry.decision.reason === 'off' ? 'outside' : entry.decision.reason,

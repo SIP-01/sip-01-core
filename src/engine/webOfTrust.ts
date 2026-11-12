@@ -318,7 +318,7 @@ export function webOfTrustVoteWeight(decision: WebOfTrustDecision): number {
  
 
 /** NIP-73 web identifier: normalized HTTP(S) URL without a fragment. */
-export function normalizeNip73WebIdentifier(value: string): string | null {
+export function normalizeNip85WebIdentifier(value: string): string | null {
   try {
     const url = new URL(value);
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
@@ -368,7 +368,7 @@ export function nip85TargetForSearchResult(result: {
   // Community bookmarks, SIP-01 observations and web search results all point
   // at external content. Their page trust is evaluated by the NIP-73 subject,
   // not by the author of the bookmark/submission wrapper.
-  const url = normalizeNip73WebIdentifier(result.url);
+  const url = normalizeNip85WebIdentifier(result.url);
   return url
     ? { kind: NIP85_EXTERNAL_ID_ASSERTION_KIND, identifier: url, externalKind: 'web' }
     : null;

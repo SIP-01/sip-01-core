@@ -33,3 +33,8 @@ Use 30382 for the indexer/author account, 30383 for a regular Nostr event, 30384
 The Web-of-Trust decision returns inclusion, a trust tier, pending state and a reason. Hosts apply that decision after hard platform moderation. The vote helper maps the resolved tier to a small influence multiplier while keeping raw NIP-25 counts available alongside weighted totals.
 
 When providers are syncing or unavailable, the administrator's unknown-state policy decides whether results remain visible. The safe default during rollout is to preserve normal search results until the first successful provider sync.
+
+
+## Provider list ownership
+
+The selected provider rows are resolved by the host from an administrator-owned platform list and, when permitted, the logged-in account's own kind-10040 list. `buildNip85ProviderListDraft()` writes public provider rows as tags and private rows as NIP-44-encrypted JSON tag arrays. `decryptNip85PrivateProviderRows()` opens those private rows through the account signer before `parseNip85ProviderList()` validates the selected services. The host must still verify the kind-10040 event signature and enforce its own authorization policy before injecting the result into `EngineRuntime.webOfTrust`.

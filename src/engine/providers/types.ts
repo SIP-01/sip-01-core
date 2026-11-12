@@ -69,6 +69,17 @@ export interface SearchResult {
   /** Score used for ranking (higher = better). */
   score?: number;
   /**
+   * Local NIP-85 decision attached by the engine after provider verification.
+   * This is client-side provenance metadata, not a Nostr event field and
+   * never written into a SIP-01 kind-39697 observation.
+   */
+  trust?: {
+    mode: 'platform' | 'personal' | 'combined';
+    tier: 0 | 1 | 2;
+    pending: boolean;
+    reason: 'platform' | 'personal' | 'both' | 'either' | 'unknown' | 'outside';
+  };
+  /**
    * ISO 639-1 language code of the result content, when the provider knows
    * it (e.g. SIP-01 `l` tag). Engine API results usually don't carry one.
    */

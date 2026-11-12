@@ -297,7 +297,15 @@ export function useProviderSearch({
     if (policy.mode === 'combined' && policy.strategy === 'both-first') {
       decisions.sort((a, b) => b.decision.trustTier - a.decision.trustTier || a.index - b.index);
     }
-    return decisions.map((entry) => entry.result);
+    return decisions.map((entry) => ({
+      ...entry.result,
+      trust: {
+        mode: policy.mode,
+        tier: entry.decision.trustTier,
+        pending: entry.decision.pending,
+        reason: entry.decision.reason === 'blocked' ? 'outside' : entry.decision.reason,
+      },
+    }));
   }, [baseResults, moderationSet, effectiveWebOfTrustPolicy, webOfTrustAssertions.data]);
   const suggestions = data?.suggestions ?? [];
 

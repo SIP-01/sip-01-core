@@ -333,14 +333,41 @@ export function normalizeNip73WebIdentifier(value: string): string | null {
 export function nip85TargetForSearchResult(result: {
   url: string;
   source: string;
-  nostrEvent?: { id?: string; pubkey?: string };
+  nostrEvent?: { id?: string; kind?: number; pubkey?: string; tags?: string[][] };
 }): Nip85RankTarget | null {
-  if (result.nostrEvent?.pubkey && HEX_PUBKEY.test(result.nostrEvent.pubkey)) {
-    return { kind: NIP85_USER_ASSERTION_KIND, identifier: result.nostrEvent.pubkey.toLowerCase() };
+  const event = result.nostrEvent;
+
+  // Nostr-native result: rank the event itself where NIP-85 defines a subject
+  // type. Profiles/replaceable objects fall back to the author's user rank.
+  if (result.source === 'nostr' && event?.id) {
+    if (
+      event.kind !== undefined &&
+      event.kind >= 30000 &&
+      event.kind <= 39999 &&
+      event.pubkey &&
+      /^[0-9a-f]{64}$/i.test(event.pubkey)
+    ) {
+      const d = event.tags?.find(([name]) => name === 'd')?.[1];
+      if (d !== undefined) {
+        return {
+          kind: NIP85_ADDRESSABLE_ASSERTION_KIND,
+          identifier: String(event.kind) + ':' + event.pubkey.toLowerCase() + ':' + d,
+        };
+      }
+    }
+
+    if (event.kind !== undefined && event.kind < 10000 && /^[0-9a-f]{64}$/i.test(event.id)) {
+      return { kind: NIP85_EVENT_ASSERTION_KIND, identifier: event.id.toLowerCase() };
+    }
+
+    if (event.pubkey && HEX_PUBKEY.test(event.pubkey)) {
+      return { kind: NIP85_USER_ASSERTION_KIND, identifier: event.pubkey.toLowerCase() };
+    }
   }
-  if (result.source === 'nostr' && result.nostrEvent?.id && /^[0-9a-f]{64}$/i.test(result.nostrEvent.id)) {
-    return { kind: NIP85_EVENT_ASSERTION_KIND, identifier: result.nostrEvent.id.toLowerCase() };
-  }
+
+  // Community bookmarks, SIP-01 observations and web search results all point
+  // at external content. Their page trust is evaluated by the NIP-73 subject,
+  // not by the author of the bookmark/submission wrapper.
   const url = normalizeNip73WebIdentifier(result.url);
   return url
     ? { kind: NIP85_EXTERNAL_ID_ASSERTION_KIND, identifier: url, externalKind: 'web' }

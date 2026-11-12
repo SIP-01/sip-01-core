@@ -1,132 +1,159 @@
 /**
- * Voting — 👍/👎 on results, NIP-25 reactions (kind 7).
- *
- * NIP-25 already covers both target kinds we need:
- *   - Nostr events:  ["e", "<event-id>"]
- *   - Websites/URLs: ["r", "<url>"]   (content "+" = like, "-" = dislike)
- *
- * We normalize URL targets with the SIP-01 normalizer so the same page
- * tallies together regardless of tracking params.
- *
- * Identity: votes default to ANONYMOUS — signed by this device's built-in
- * SIP-01 indexing identity (pseudonymous, per-device, never the user's npub).
- * Users can toggle "Vote with my npub" in Settings → Auto Indexer to make their
- * votes attributable (same as keyword staking).
- *
- * Tally rule: latest vote per pubkey per target wins; score = ups − downs.
+ * NIP-25 voting for Nostr events and external web documents.
+ * Native events use kind 7. External web content uses kind 17 with NIP-73
+ * k/i identifiers. Legacy kind-7/r URL reactions are read-only compatibility.
  */
 import type { NostrEvent } from '@nostrify/nostrify';
-
 import { normalizeIndexUrl } from '@/protocol/webIndex';
 import { readStoredWithLegacy, writeStoredCanonical } from '@/lib/storageMigration';
 
-/** NIP-25 reaction kind. */
 export const VOTE_KIND = 7;
-
+export const EXTERNAL_REACTION_KIND = 17;
 export type VoteDirection = 1 | -1;
 
-/** A votable target: a Nostr event or a (normalized) web URL. */
 export interface VoteTarget {
-  /** Stable key for lookups: "e:<id>" or "u:<normalized-url>". */
   key: string;
-  /** The tag to put in the vote event. */
-  tag: string[];
+  kind: typeof VOTE_KIND | typeof EXTERNAL_REACTION_KIND;
+  tags: string[][];
 }
 
-/** Build the target for a search result. Returns null for un-votable results. */
-export function voteTargetFor(result: { url: string; nostrEvent?: { id: string } }): VoteTarget | null {
-  // Nostr-native results vote on the event itself.
-  if (result.nostrEvent?.id) {
-    return { key: `e:${result.nostrEvent.id}`, tag: ['e', result.nostrEvent.id] };
+export function voteTargetFor(result: {
+  url: string;
+  source?: string;
+  nostrEvent?: { id: string; kind?: number; pubkey?: string; tags?: string[][] };
+}): VoteTarget | null {
+  // Kind-39697 observations and kind-39701 bookmarks are external web content.
+  if (result.source === 'nostr' && result.nostrEvent?.id) {
+    const event = result.nostrEvent;
+    const tags: string[][] = [['e', event.id]];
+    if (event.pubkey) tags.push(['p', event.pubkey]);
+    if (typeof event.kind === 'number') tags.push(['k', String(event.kind)]);
+    if (event.kind !== undefined && event.kind >= 30000 && event.kind <= 39999 && event.pubkey) {
+      const d = event.tags?.find(([name]) => name === 'd')?.[1];
+      if (d !== undefined) tags.push(['a', String(event.kind) + ':' + event.pubkey + ':' + d]);
+    }
+    return { key: 'e:' + event.id, kind: VOTE_KIND, tags };
   }
-  // Web results vote on the normalized URL.
+
   const normalized = normalizeIndexUrl(result.url);
-  if (normalized) {
-    return { key: `u:${normalized}`, tag: ['r', normalized] };
-  }
-  return null;
+  if (!normalized) return null;
+  return {
+    key: 'u:' + normalized,
+    kind: EXTERNAL_REACTION_KIND,
+    tags: [['k', 'web'], ['i', normalized]],
+  };
 }
 
-/** Build a NIP-25 vote event template. */
 export function buildVoteEvent(target: VoteTarget, direction: VoteDirection): {
   kind: number;
   content: string;
   tags: string[][];
 } {
   return {
-    kind: VOTE_KIND,
+    kind: target.kind,
     content: direction === 1 ? '+' : '-',
     tags: [
-      target.tag,
-      ['alt', `SIP-01 web index ${direction === 1 ? 'upvote' : 'downvote'}`],
+      ...target.tags.map((tag) => [...tag]),
+      ['alt', 'SIP-01 ' + (direction === 1 ? 'upvote' : 'downvote') + ' reaction'],
     ],
   };
 }
-
-/* ------------------------------------------------------------------ */
-/* Tallying                                                            */
-/* ------------------------------------------------------------------ */
 
 export interface VoteTally {
   up: number;
   down: number;
   score: number;
+  weightedUp: number;
+  weightedDown: number;
+  weightedScore: number;
 }
 
-/** Does this event vote on the given target key? */
+export interface TallyVoteOptions {
+  /** Weights are clamped to 0..5. Unlisted authors have weight 1. */
+  authorWeights?: ReadonlyMap<string, number>;
+}
+
+function urlTargetKey(value: string | undefined): string | null {
+  if (!value) return null;
+  const normalized = normalizeIndexUrl(value);
+  return normalized ? 'u:' + normalized : null;
+}
+
 function eventTargetKey(event: NostrEvent): string | null {
-  const eTag = event.tags.find(([n]) => n === 'e')?.[1];
-  if (eTag) return `e:${eTag}`;
-  const rTag = event.tags.find(([n]) => n === 'r')?.[1];
-  if (rTag) return `u:${rTag}`;
+  if (event.kind === VOTE_KIND) {
+    const eventId = event.tags.find(([name]) => name === 'e')?.[1];
+    if (eventId) return 'e:' + eventId;
+    // Legacy URL reaction. Read this shape, but never write it.
+    return urlTargetKey(event.tags.find(([name]) => name === 'r')?.[1]);
+  }
+  if (event.kind === EXTERNAL_REACTION_KIND) {
+    const kinds = event.tags.filter(([name]) => name === 'k').map(([, value]) => value);
+    if (!kinds.includes('web')) return null;
+    return urlTargetKey(event.tags.find(([name]) => name === 'i')?.[1]);
+  }
   return null;
 }
 
-/**
- * Tally vote events per target. Latest vote per pubkey wins
- * (republishing flips your vote; no double-counting).
- */
-export function tallyVotes(events: NostrEvent[]): Map<string, VoteTally> {
-  // Latest vote per (target, pubkey).
-  const latest = new Map<string, { direction: VoteDirection; createdAt: number }>();
+function reactionDirection(event: NostrEvent): VoteDirection | null {
+  // NIP-25: empty and '+' mean like; '-' means dislike. Emoji is not a vote.
+  if (event.content === '+' || event.content === '') return 1;
+  if (event.content === '-') return -1;
+  return null;
+}
 
-  for (const ev of events) {
-    if (ev.kind !== VOTE_KIND) continue;
-    const direction: VoteDirection | null =
-      ev.content === '+' || ev.content === '👍' ? 1
-        : ev.content === '-' || ev.content === '👎' ? -1
-          : null;
+/** Latest reaction per target and author wins; timestamp ties use event id. */
+export function tallyVotes(
+  events: NostrEvent[],
+  options: TallyVoteOptions = {},
+): Map<string, VoteTally> {
+  const latest = new Map<string, {
+    targetKey: string;
+    direction: VoteDirection;
+    createdAt: number;
+    eventId: string;
+    weight: number;
+  }>();
+
+  for (const event of events) {
+    if (event.kind !== VOTE_KIND && event.kind !== EXTERNAL_REACTION_KIND) continue;
+    const direction = reactionDirection(event);
     if (direction === null) continue;
-
-    const targetKey = eventTargetKey(ev);
+    const targetKey = eventTargetKey(event);
     if (!targetKey) continue;
 
-    const k = `${targetKey}:${ev.pubkey}`;
-    const existing = latest.get(k);
-    if (!existing || ev.created_at > existing.createdAt) {
-      latest.set(k, { direction, createdAt: ev.created_at });
+    const rawWeight = options.authorWeights?.get(event.pubkey) ?? 1;
+    const weight = Number.isFinite(rawWeight) ? Math.min(5, Math.max(0, rawWeight)) : 1;
+    const key = targetKey + '\\u0000' + event.pubkey;
+    const existing = latest.get(key);
+    if (
+      !existing ||
+      event.created_at > existing.createdAt ||
+      (event.created_at === existing.createdAt && event.id > existing.eventId)
+    ) {
+      latest.set(key, { targetKey, direction, createdAt: event.created_at, eventId: event.id, weight });
     }
   }
 
   const tallies = new Map<string, VoteTally>();
-  for (const [k, vote] of latest) {
-    const targetKey = k.slice(0, k.lastIndexOf(':'));
-    const tally = tallies.get(targetKey) ?? { up: 0, down: 0, score: 0 };
-    if (vote.direction === 1) tally.up++;
-    else tally.down++;
+  for (const vote of latest.values()) {
+    const tally = tallies.get(vote.targetKey) ?? {
+      up: 0, down: 0, score: 0,
+      weightedUp: 0, weightedDown: 0, weightedScore: 0,
+    };
+    if (vote.direction === 1) {
+      tally.up++;
+      tally.weightedUp += vote.weight;
+    } else {
+      tally.down++;
+      tally.weightedDown += vote.weight;
+    }
     tally.score = tally.up - tally.down;
-    tallies.set(targetKey, tally);
+    tally.weightedScore = tally.weightedUp - tally.weightedDown;
+    tallies.set(vote.targetKey, tally);
   }
-
   return tallies;
 }
 
-/* ------------------------------------------------------------------ */
-/* My votes (localStorage — drives the active button state)            */
-/* ------------------------------------------------------------------ */
-
-// Local-only UI state (active button state) — renamed dsearch:* → sip01:*
-// with read-through migration (see STORAGE_KEY_RENAMES in storageMigration).
 const LS_MY_VOTES = 'sip01:votes';
 const LEGACY_LS_MY_VOTES = ['dsearch:votes', 'presearchstr:votes'] as const;
 
@@ -140,8 +167,8 @@ function readMyVotes(): Record<string, number> {
 }
 
 export function getMyVote(targetKey: string): VoteDirection | null {
-  const v = readMyVotes()[targetKey];
-  return v === 1 || v === -1 ? v : null;
+  const value = readMyVotes()[targetKey];
+  return value === 1 || value === -1 ? value : null;
 }
 
 export function setMyVote(targetKey: string, direction: VoteDirection | null): void {
@@ -151,6 +178,6 @@ export function setMyVote(targetKey: string, direction: VoteDirection | null): v
     else parsed[targetKey] = direction;
     writeStoredCanonical(LS_MY_VOTES, LEGACY_LS_MY_VOTES, JSON.stringify(parsed));
   } catch {
-    // Storage unavailable — vote still published, state just won't persist.
+    // Storage unavailable — vote is still published.
   }
 }

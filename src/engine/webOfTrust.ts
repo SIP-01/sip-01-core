@@ -167,17 +167,19 @@ export function resolveEffectiveWebOfTrustPolicy(
   const platformMinimumRank = threshold(admin.minimumRank, 0);
   const personalMinimumRank = threshold(personal?.minimumRank, 0);
 
-  if (personalEnabled && !platformEnabled) {
-    return {
-      mode: 'personal',
-      strategy: admin.defaultStrategy,
-      platformMinimumRank,
-      personalMinimumRank,
-      unknownBehavior: admin.unknownBehavior,
-    };
-  }
-
   if (!platformEnabled) {
+    // An augment-only policy cannot replace a disabled platform network.
+    // Personal-only mode is an override and therefore requires explicit
+    // administrator permission through user-choice.
+    if (personalEnabled && admin.personalPermission === 'user-choice') {
+      return {
+        mode: 'personal',
+        strategy: admin.defaultStrategy,
+        platformMinimumRank,
+        personalMinimumRank,
+        unknownBehavior: admin.unknownBehavior,
+      };
+    }
     return {
       mode: 'off',
       strategy: admin.defaultStrategy,

@@ -21,7 +21,6 @@ import {
   tallyVotes,
   voteTargetFor,
   type VoteDirection,
-  type VoteTally,
   type VoteTarget,
 } from '@/engine/votes';
 import {

@@ -18,11 +18,18 @@ export interface EngineNip44Signer {
   decrypt(peerPubkey: string, ciphertext: string): Promise<string>;
 }
 
+export interface EngineNip04LegacySigner {
+  /** Read-only NIP-51 compatibility for historical ?iv= list content. */
+  decrypt(peerPubkey: string, ciphertext: string): Promise<string>;
+}
+
 /** NIP-07/NIP-46-style signer capability injected by the host. */
 export interface EngineSigner {
   signEvent(t: { kind: number; content: string; tags: string[][]; created_at: number }): Promise<NostrEvent>;
-  /** Required for private NIP-51 lists and private kind-10040 rows. */
+  /** Required for new private NIP-51 writes and private kind-10040 writes. */
   nip44?: EngineNip44Signer;
+  /** Optional legacy NIP-04 decrypt-only compatibility; never used for new writes. */
+  nip04?: EngineNip04LegacySigner;
 }
 
 export interface EngineWebOfTrustConfig {

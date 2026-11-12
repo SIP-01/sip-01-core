@@ -113,9 +113,17 @@ export function useBookmarks() {
 
       const parsed = await Promise.all([...latest.values()].map(async (event) => {
         const nip44 = runtime.userSigner?.nip44;
-        if (event.content && nip44 && runtime.userPubkey === event.pubkey) {
+        const nip04 = runtime.userSigner?.nip04;
+        const hasCompatibleDecryptor = event.content && (
+          (event.content.includes('?iv=') && !!nip04) ||
+          (!event.content.includes('?iv=') && !!nip44)
+        );
+        if (hasCompatibleDecryptor && runtime.userPubkey === event.pubkey) {
           try {
-            const privateTags = await decryptNip51PrivateItems(event, pubkey, nip44);
+            const privateTags = await decryptNip51PrivateItems(event, pubkey, {
+              decrypt: nip44?.decrypt,
+              nip04,
+            });
             return parseNip51BookmarkList(event, privateTags);
           } catch {
             // Keep public references visible but mark private content unavailable.
@@ -171,10 +179,13 @@ export function useBookmarks() {
       throw new Error('Your Nostr signer must support NIP-44 to read or write private bookmark-list content.');
     }
 
-    const safeSigner = nip44 ?? {
-      encrypt: async () => { throw new Error('NIP-44 encryption is unavailable.'); },
-      decrypt: async () => { throw new Error('NIP-44 decryption is unavailable.'); },
-    };
+    const safeSigner = nip44
+      ? { ...nip44, nip04: runtime.userSigner.nip04 }
+      : {
+          encrypt: async () => { throw new Error('NIP-44 encryption is unavailable.'); },
+          decrypt: async () => { throw new Error('NIP-44 decryption is unavailable.'); },
+          nip04: runtime.userSigner.nip04,
+        };
 
     const draft = await mutateNip51BookmarkListDraft(
       existing,

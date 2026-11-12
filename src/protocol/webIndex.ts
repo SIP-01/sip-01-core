@@ -35,6 +35,7 @@ const MAX_TITLE_LEN = 300;
 const MAX_DESCRIPTION_LEN = 1000;
 const MAX_IMAGE_LEN = 2048;
 const MAX_SOURCE_LEN = 100;
+const MAX_ALT_LEN = 1000;
 const MAX_TAGS = 8;
 
 /** Topic tag shape (spec §6): lowercase keyword, e.g. "nostr", "web-search". */
@@ -282,12 +283,20 @@ function getTag(event: NostrEvent, name: string): string | undefined {
 export function parseIndexEvent(event: NostrEvent): IndexObservation | null {
   if (event.kind !== WEB_INDEX_KIND) return null;
 
+  // SIP-01 §5 requires exactly one d, u, v and alt tag. Reject duplicate
+  // identity fields instead of silently trusting the first occurrence.
+  for (const required of ['d', 'u', 'v', 'alt']) {
+    if (event.tags.filter(([name]) => name === required).length !== 1) return null;
+  }
+
   const d = getTag(event, 'd');
   const url = getTag(event, 'u');
   const version = getTag(event, 'v');
-  if (!d?.startsWith(WEB_INDEX_D_PREFIX) || !url || version !== WEB_INDEX_SCHEMA_VERSION) {
+  const alt = getTag(event, 'alt');
+  if (!d || !/^widx:[0-9a-f]{32}$/.test(d) || !url || version !== WEB_INDEX_SCHEMA_VERSION) {
     return null;
   }
+  if (!alt?.trim() || alt.length > MAX_ALT_LEN) return null;
   if (url.length > MAX_URL_LEN) return null;
 
   const normalized = normalizeIndexUrl(url);

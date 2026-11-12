@@ -81,7 +81,7 @@ describe('NIP-25 vote tallies', () => {
     };
     const result = tallyVotes([up, down], {
       authorWeights: new Map([[author, 2], [otherAuthor, 1]]),
-    }).get('u:https://example.com/page/');
+    }).get('u:https://example.com/page');
     expect(result?.up).toBe(1);
     expect(result?.down).toBe(1);
     expect(result?.score).toBe(0);
@@ -102,7 +102,7 @@ describe('NIP-25 vote tallies', () => {
       tags: [['k', 'web'], ['i', 'https://example.com/page']],
       content: '👍',
     };
-    const result = tallyVotes([legacy, emoji]).get('u:https://example.com/page/');
+    const result = tallyVotes([legacy, emoji]).get('u:https://example.com/page');
     expect(result?.up).toBe(1);
     expect(result?.down).toBe(0);
   });

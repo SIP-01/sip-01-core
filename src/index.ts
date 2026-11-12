@@ -82,6 +82,7 @@ export * from './engine/hooks/useInstantAnswer';
 export * from './engine/hooks/useSearxngInstances';
 export * from './engine/hooks/useVotes';
 export * from './engine/hooks/useWebOfTrustAssertions';
+export * from './engine/hooks/useBookmarks';
 export * from './engine/hooks/useTrendingTerms';
 export * from './engine/hooks/useRecentIndexedDocs';
 export * from './engine/hooks/useRecentStakes';

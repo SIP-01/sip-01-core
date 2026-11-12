@@ -20,9 +20,20 @@ export type Nip51BookmarkListKind =
   | typeof NIP51_GLOBAL_BOOKMARKS_KIND
   | typeof NIP51_BOOKMARK_SET_KIND;
 
+export interface Nip04LegacyDecryptor {
+  decrypt(peerPubkey: string, ciphertext: string): Promise<string>;
+}
+
+/** NIP-44 is required for new writes; optional NIP-04 is read-only legacy support. */
 export interface Nip44SelfSigner {
   encrypt(peerPubkey: string, plaintext: string): Promise<string>;
   decrypt(peerPubkey: string, ciphertext: string): Promise<string>;
+  nip04?: Nip04LegacyDecryptor;
+}
+
+export interface Nip51ListDecryptSigner {
+  decrypt?(peerPubkey: string, ciphertext: string): Promise<string>;
+  nip04?: Nip04LegacyDecryptor;
 }
 
 export type Nip51BookmarkReference =
@@ -249,14 +260,24 @@ export function parseNip51BookmarkList(
 export async function decryptNip51PrivateItems(
   event: NostrEvent,
   ownerPubkey: string,
-  signer: Nip44SelfSigner,
+  signer: Nip51ListDecryptSigner,
 ): Promise<string[][]> {
   if (event.kind !== NIP51_GLOBAL_BOOKMARKS_KIND && event.kind !== NIP51_BOOKMARK_SET_KIND) {
     throw new Error('Event is not a NIP-51 bookmark list.');
   }
   if (!event.content) return [];
 
-  const plaintext = await signer.decrypt(ownerPubkey, event.content);
+  // NIP-51 permits reading legacy NIP-04 encrypted list content. The ?iv=
+  // marker is the upstream compatibility discriminator. All new writes below
+  // continue to use NIP-44, never NIP-04.
+  let plaintext: string;
+  if (event.content.includes('?iv=')) {
+    if (!signer.nip04) throw new Error('This bookmark list uses legacy NIP-04 encryption; the signer cannot decrypt it.');
+    plaintext = await signer.nip04.decrypt(ownerPubkey, event.content);
+  } else {
+    if (!signer.decrypt) throw new Error('NIP-44 decryption is unavailable for this private bookmark list.');
+    plaintext = await signer.decrypt(ownerPubkey, event.content);
+  }
   const parsed: unknown = JSON.parse(plaintext);
   if (!Array.isArray(parsed) || !parsed.every((tag) =>
     Array.isArray(tag) && tag.length >= 2 && tag.every((part) => typeof part === 'string'),

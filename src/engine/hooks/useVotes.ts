@@ -28,8 +28,8 @@ import {
   evaluateWebOfTrust,
   resolveEffectiveWebOfTrustPolicy,
   webOfTrustVoteWeight,
-  type WebOfTrustLookupTarget,
 } from '@/engine/webOfTrust';
+import type { WebOfTrustLookupTarget } from '@/engine/hooks/useWebOfTrustAssertions';
 
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);

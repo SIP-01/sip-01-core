@@ -18,7 +18,7 @@ gitbook.com renders the space directly — and every page also reads on GitHub.
 open Nostr protocol for a decentralized web-document index: indexers publish
 observations about web pages as addressable Nostr events (kind 39697), and any
 search engine can read the shared index from public relays — no central
-crawler, no central server. The canonical specification (currently **v1.2**,
+crawler, no central server. The canonical specification (currently **v1.3**,
 wire schema `v: "1"`), its test vectors, and the wire format live in the
 [`NostrDanish/SIP-01`](https://github.com/NostrDanish/SIP-01) repo; a vendored
 copy is kept at [`docs/SIP-01.md`](docs/SIP-01.md) for convenience. When they

@@ -21,13 +21,12 @@ import { sortByQueryRelevance } from '@/engine/query/resultRank';
 import { isHiddenResult } from '@/engine/moderation';
 import { useSearchIndexer } from '@/engine/hooks/useSearchIndexer';
 import { useEngineRuntime } from '@/engine/runtime';
-import { useWebOfTrustAssertions } from '@/engine/hooks/useWebOfTrustAssertions';
+import { useWebOfTrustAssertions, type WebOfTrustLookupTarget } from '@/engine/hooks/useWebOfTrustAssertions';
 import {
   evaluateWebOfTrust,
   nip85TargetForSearchResult,
   nip85TargetKey,
   resolveEffectiveWebOfTrustPolicy,
-  type WebOfTrustLookupTarget,
 } from '@/engine/webOfTrust';
 
 export type ProviderStatus = 'idle' | 'searching' | 'done' | 'error';

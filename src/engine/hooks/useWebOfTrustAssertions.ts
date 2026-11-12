@@ -14,6 +14,7 @@ import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 import { getSearchRelay } from '@/lib/searchRelays';
 import { useEngineRuntime } from '@/engine/runtime';
 import {
+  assertUniqueNip85ProviderServices,
   parseNip85RankAssertion,
   resolveEffectiveWebOfTrustPolicy,
   type Nip85RankTarget,
@@ -119,6 +120,14 @@ export function useWebOfTrustAssertions(targets: WebOfTrustLookupTarget[]) {
   return useQuery({
     queryKey: ['nip85-assertions', targetKey, providerKey],
     queryFn: async ({ signal }) => {
+      // kind-10040 can list several candidate providers for a service, but
+      // the host must choose one before applying a single rank threshold.
+      for (const source of ['platform', 'personal'] as const) {
+        assertUniqueNip85ProviderServices(
+          tasks.filter((task) => task.source === source).map((task) => task.provider),
+        );
+      }
+
       const ranks = new Map<string, WebOfTrustLookupValue>();
       const platformReady = new Set<number>();
       const personalReady = new Set<number>();

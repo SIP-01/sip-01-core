@@ -5,6 +5,7 @@ import {
   parseNip85RankAssertion,
   resolveEffectiveWebOfTrustPolicy,
   webOfTrustVoteWeight,
+  nip85TargetForSearchResult,
   type PlatformWebOfTrustPolicy,
 } from './webOfTrust';
 
@@ -51,6 +52,33 @@ describe('NIP-85 provider and assertion validation', () => {
     expect(parseNip85RankAssertion(event, provider, { kind: 30382, identifier: 'e'.repeat(64) })).toBeNull();
     expect(parseNip85RankAssertion({ ...event, pubkey: 'f'.repeat(64) }, provider, { kind: 30382, identifier: 'b'.repeat(64) })).toBeNull();
     expect(parseNip85RankAssertion({ ...event, tags: [['d', 'b'.repeat(64)], ['rank', '101']] }, provider, { kind: 30382, identifier: 'b'.repeat(64) })).toBeNull();
+  });
+});
+
+describe('NIP-85 subject selection', () => {
+  it('uses the external URL rather than the bookmarker author for web results', () => {
+    const target = nip85TargetForSearchResult({
+      source: 'web',
+      url: 'https://example.com/page',
+      nostrEvent: { id: 'a'.repeat(64), kind: 39701, pubkey: 'b'.repeat(64), tags: [['d', 'example.com/page']] },
+    });
+    expect(target).toEqual({
+      kind: 30385,
+      identifier: 'https://example.com/page',
+      externalKind: 'web',
+    });
+  });
+
+  it('uses the address coordinate for Nostr addressable results', () => {
+    const target = nip85TargetForSearchResult({
+      source: 'nostr',
+      url: 'https://example.com/article',
+      nostrEvent: { id: 'a'.repeat(64), kind: 30023, pubkey: 'b'.repeat(64), tags: [['d', 'post-1']] },
+    });
+    expect(target).toEqual({
+      kind: 30384,
+      identifier: '30023:' + 'b'.repeat(64) + ':post-1',
+    });
   });
 });
 

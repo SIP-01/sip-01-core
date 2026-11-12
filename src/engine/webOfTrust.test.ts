@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assertUniqueNip85ProviderServices,
   buildNip85ProviderListDraft,
   decryptNip85PrivateProviderRows,
   evaluateWebOfTrust,
@@ -75,6 +76,21 @@ describe('NIP-85 provider list', () => {
       content: 'ciphertext',
       sig: 'c'.repeat(128),
     }, 'd'.repeat(64), signer)).rejects.toThrow('does not belong');
+  });
+});
+
+describe('NIP-85 provider selection', () => {
+  it('requires the host to select one provider per service', () => {
+    const provider = {
+      service: '30382:rank' as const,
+      pubkey: 'a'.repeat(64),
+      relay: 'wss://scores.example/',
+    };
+    expect(() => assertUniqueNip85ProviderServices([provider])).not.toThrow();
+    expect(() => assertUniqueNip85ProviderServices([
+      provider,
+      { ...provider, pubkey: 'b'.repeat(64), relay: 'wss://other.example/' },
+    ])).toThrow('Select exactly one NIP-85 provider');
   });
 });
 

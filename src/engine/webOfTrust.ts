@@ -313,3 +313,39 @@ export function webOfTrustVoteWeight(decision: WebOfTrustDecision): number {
   if (!decision.included) return 0;
   return decision.trustTier === 2 ? 2 : 1;
 }
+ 
+
+/** NIP-73 web identifier: normalized HTTP(S) URL without a fragment. */
+export function normalizeNip73WebIdentifier(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    url.hash = '';
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+/** Choose the primary NIP-85 subject for a search result. */
+export function nip85TargetForSearchResult(result: {
+  url: string;
+  source: string;
+  nostrEvent?: { id?: string; pubkey?: string };
+}): Nip85RankTarget | null {
+  if (result.source === 'nostr' && result.nostrEvent?.pubkey && HEX_PUBKEY.test(result.nostrEvent.pubkey)) {
+    return { kind: NIP85_USER_ASSERTION_KIND, identifier: result.nostrEvent.pubkey.toLowerCase() };
+  }
+  if (result.source === 'nostr' && result.nostrEvent?.id && /^[0-9a-f]{64}$/i.test(result.nostrEvent.id)) {
+    return { kind: NIP85_EVENT_ASSERTION_KIND, identifier: result.nostrEvent.id.toLowerCase() };
+  }
+  const url = normalizeNip73WebIdentifier(result.url);
+  return url
+    ? { kind: NIP85_EXTERNAL_ID_ASSERTION_KIND, identifier: url, externalKind: 'web' }
+    : null;
+}
+
+/** Stable key shared by assertion lookup and result evaluation. */
+export function nip85TargetKey(target: Nip85RankTarget): string {
+  return String(target.kind) + ':' + target.identifier;
+}

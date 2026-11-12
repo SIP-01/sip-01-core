@@ -333,7 +333,7 @@ export function nip85TargetForSearchResult(result: {
   source: string;
   nostrEvent?: { id?: string; pubkey?: string };
 }): Nip85RankTarget | null {
-  if (result.source === 'nostr' && result.nostrEvent?.pubkey && HEX_PUBKEY.test(result.nostrEvent.pubkey)) {
+  if (result.nostrEvent?.pubkey && HEX_PUBKEY.test(result.nostrEvent.pubkey)) {
     return { kind: NIP85_USER_ASSERTION_KIND, identifier: result.nostrEvent.pubkey.toLowerCase() };
   }
   if (result.source === 'nostr' && result.nostrEvent?.id && /^[0-9a-f]{64}$/i.test(result.nostrEvent.id)) {

@@ -72,6 +72,8 @@ export * from './engine/query/queryMatch';
 export * from './engine/query/resultRank';
 export * from './engine/query/calculator';
 export * from './engine/votes';
+export * from './engine/bookmarks';
+export * from './engine/webOfTrust';
 export * from './engine/moderation';
 export * from './engine/runtime';
 export * from './engine/hooks/useProviderSearch';
@@ -79,6 +81,8 @@ export * from './engine/hooks/useSearchIndexer';
 export * from './engine/hooks/useInstantAnswer';
 export * from './engine/hooks/useSearxngInstances';
 export * from './engine/hooks/useVotes';
+export * from './engine/hooks/useWebOfTrustAssertions';
+export * from './engine/hooks/useBookmarks';
 export * from './engine/hooks/useTrendingTerms';
 export * from './engine/hooks/useRecentIndexedDocs';
 export * from './engine/hooks/useRecentStakes';
@@ -100,5 +104,35 @@ export * from './ai/engineAdmin';
 export * from './ai/hooks/useAIAnswer';
 export * from './ai/hooks/useEngineAIStatus';
 
-export * from './discovery/capability';
+export {
+  CAPABILITY_KIND,
+  HANDLER_KIND,
+  CAPABILITY_SCHEMA,
+  ROLES,
+  PROTOS,
+  PRICES,
+  isRole,
+  isProto,
+  isPrice,
+  endpointAllowed,
+  slugify,
+  buildCapabilityEvent,
+  withdrawnEvent,
+  parseCapabilityEvent,
+  listingKey,
+  matches,
+  capabilityPointers,
+  WEB_INDEX_KIND as CAPABILITY_WEB_INDEX_KIND,
+  parseQuery as parseCapabilityQuery,
+} from './discovery/capability';
+export type {
+  Role,
+  Proto,
+  Price,
+  ListingSource,
+  CapabilityInput,
+  Capability,
+  UnsignedEvent,
+  QueryParts,
+} from './discovery/capability';
 export * from './ai/capabilityPlugin';

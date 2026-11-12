@@ -124,7 +124,6 @@ export function useWebOfTrustAssertions(targets: WebOfTrustLookupTarget[]) {
       const personalReady = new Set<number>();
 
       const settled = await Promise.allSettled(tasks.map(async (task) => {
-        const providerKind = serviceKind(task.provider.service);
         const events = await queryProvider(task.provider, targetList, signal);
         for (const event of events) {
           if (!verifyEvent(event)) continue;

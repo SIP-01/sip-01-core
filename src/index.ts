@@ -104,5 +104,35 @@ export * from './ai/engineAdmin';
 export * from './ai/hooks/useAIAnswer';
 export * from './ai/hooks/useEngineAIStatus';
 
-export * from './discovery/capability';
+export {
+  CAPABILITY_KIND,
+  HANDLER_KIND,
+  CAPABILITY_SCHEMA,
+  ROLES,
+  PROTOS,
+  PRICES,
+  isRole,
+  isProto,
+  isPrice,
+  endpointAllowed,
+  slugify,
+  buildCapabilityEvent,
+  withdrawnEvent,
+  parseCapabilityEvent,
+  listingKey,
+  matches,
+  capabilityPointers,
+  WEB_INDEX_KIND as CAPABILITY_WEB_INDEX_KIND,
+  parseQuery as parseCapabilityQuery,
+} from './discovery/capability';
+export type {
+  Role,
+  Proto,
+  Price,
+  ListingSource,
+  CapabilityInput,
+  Capability,
+  UnsignedEvent,
+  QueryParts,
+} from './discovery/capability';
 export * from './ai/capabilityPlugin';

@@ -48,6 +48,8 @@ export interface EngineRuntime {
   userReadRelays?: string[];
   userWriteRelays?: string[];
   webOfTrust?: EngineWebOfTrustConfig;
+  /** Optional author weights resolved by the host from the active WoT policy. */
+  voteAuthorWeights?: ReadonlyMap<string, number>;
   /** Hard platform moderation; this always outranks personal WoT. */
   moderation?: ModerationSet;
 }

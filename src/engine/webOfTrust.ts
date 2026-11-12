@@ -430,3 +430,21 @@ export async function decryptNip85PrivateProviderRows(
 
   return parsed as string[][];
 }
+
+
+/**
+ * A host selects one provider for each service before injecting runtime
+ * configuration. Kind-10040 may contain multiple candidates for one service;
+ * those candidates are user/admin choices, not an implicit score ensemble.
+ */
+export function assertUniqueNip85ProviderServices(
+  providers: Nip85ProviderReference[],
+): void {
+  const selected = new Set<string>();
+  for (const provider of providers) {
+    if (selected.has(provider.service)) {
+      throw new Error('Select exactly one NIP-85 provider for service ' + provider.service + '.');
+    }
+    selected.add(provider.service);
+  }
+}

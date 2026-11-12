@@ -40,3 +40,9 @@ When providers are syncing or unavailable, the administrator's unknown-state pol
 The selected provider rows are resolved by the host from an administrator-owned platform list and, when permitted, the logged-in account's own kind-10040 list. `buildNip85ProviderListDraft()` writes public provider rows as tags and private rows as NIP-44-encrypted JSON tag arrays. `decryptNip85PrivateProviderRows()` opens those private rows through the account signer before `parseNip85ProviderList()` validates the selected services. The host must still verify the kind-10040 event signature and enforce its own authorization policy before injecting the result into `EngineRuntime.webOfTrust`.
 
 A kind-10040 list may contain several candidates for the same service, such as different 30382:rank providers. The host settings UI should present those candidates and inject exactly one selected provider per service into the active platform or personal policy. The engine rejects duplicate selected providers for one service rather than averaging unrelated rank values or silently choosing whichever relay replies last.
+
+## Integration boundary: voting is not yet trust-weighted
+
+The current core policy evaluates search-result authors and subjects for result filtering/ranking. It does **not** automatically weight NIP-25 votes, and the current 0xSearchstr, 0xPresearchstr, Dsearch and Savedd clients still tally one latest reaction per author without applying NIP-85 rank thresholds. Host applications must not claim that enabling search-result WoT also changes vote influence.
+
+A future voting integration must query the selected provider for the voter's pubkey (kind 30382 rank assertions), apply the same platform/personal/combined policy and unknown-data behavior, and expose the resulting voter eligibility/weight transparently. Until that ships, vote tallies remain unweighted.

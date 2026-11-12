@@ -303,7 +303,7 @@ export function useProviderSearch({
         mode: policy.mode,
         tier: entry.decision.trustTier,
         pending: entry.decision.pending,
-        reason: entry.decision.reason === 'blocked' ? 'outside' : entry.decision.reason,
+        reason: entry.decision.reason === 'blocked' || entry.decision.reason === 'off' ? 'outside' : entry.decision.reason,
       },
     }));
   }, [baseResults, moderationSet, effectiveWebOfTrustPolicy, webOfTrustAssertions.data]);

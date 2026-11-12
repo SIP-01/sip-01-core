@@ -174,7 +174,7 @@ describe('administrator and personal Web-of-Trust policy', () => {
     );
     const decision = evaluateWebOfTrust(policy, {
       platformRank: 80,
-      personalRank: 30,
+      personalRank: 10,
       platformReady: true,
       personalReady: true,
     });

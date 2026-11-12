@@ -41,6 +41,69 @@ describe('NIP-B0 public web bookmarks', () => {
   });
 });
 
+describe('NIP-51 legacy NIP-04 read compatibility', () => {
+  it('decrypts legacy ?iv= content through the optional NIP-04 signer', async () => {
+    const event = {
+      kind: 10003,
+      pubkey: owner,
+      id: 'f'.repeat(64),
+      created_at: 100,
+      tags: [],
+      content: 'legacy-ciphertext?iv=legacy-iv',
+      sig: 'e'.repeat(128),
+    };
+    const signer = {
+      nip04: {
+        decrypt: async (peer: string, ciphertext: string) => {
+          expect(peer).toBe(owner);
+          expect(ciphertext).toContain('?iv=');
+          return JSON.stringify([['i', 'https://legacy-private.example/'], ['k', 'web']]);
+        },
+      },
+    };
+    const privateTags = await decryptNip51PrivateItems(event, owner, signer);
+    expect(privateTags).toEqual([
+      ['i', 'https://legacy-private.example/'],
+      ['k', 'web'],
+    ]);
+  });
+
+  it('rewrites a legacy list using NIP-44 after a successful NIP-04 decrypt', async () => {
+    let encrypted = '';
+    const signer = {
+      encrypt: async (peer: string, plaintext: string) => {
+        expect(peer).toBe(owner);
+        encrypted = plaintext;
+        return 'fresh-nip44-ciphertext';
+      },
+      decrypt: async () => { throw new Error('NIP-44 must not be used for legacy ?iv= content'); },
+      nip04: {
+        decrypt: async (_peer: string, _ciphertext: string) =>
+          JSON.stringify([['i', 'https://legacy-private.example/'], ['k', 'web']]),
+      },
+    };
+    const existing = {
+      kind: 10003,
+      pubkey: owner,
+      id: 'f'.repeat(64),
+      created_at: 100,
+      tags: [],
+      content: 'legacy-ciphertext?iv=legacy-iv',
+      sig: 'e'.repeat(128),
+    };
+    const draft = await mutateNip51BookmarkListDraft(existing, owner, signer, {
+      kind: 10003,
+      addPrivate: [{ type: 'web', url: 'https://new-private.example' }],
+    });
+    expect(draft.content).toBe('fresh-nip44-ciphertext');
+    expect(JSON.parse(encrypted)).toEqual([
+      ['i', 'https://legacy-private.example/'],
+      ['k', 'web'],
+      ['i', 'https://new-private.example/'],
+    ]);
+  });
+});
+
 describe('NIP-51 public and private bookmark lists', () => {
   it('keeps private URL references out of public tags', async () => {
     let encrypted = '';

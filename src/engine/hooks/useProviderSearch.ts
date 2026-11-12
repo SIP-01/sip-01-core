@@ -21,6 +21,14 @@ import { sortByQueryRelevance } from '@/engine/query/resultRank';
 import { isHiddenResult } from '@/engine/moderation';
 import { useSearchIndexer } from '@/engine/hooks/useSearchIndexer';
 import { useEngineRuntime } from '@/engine/runtime';
+import { useWebOfTrustAssertions } from '@/engine/hooks/useWebOfTrustAssertions';
+import {
+  evaluateWebOfTrust,
+  nip85TargetForSearchResult,
+  nip85TargetKey,
+  resolveEffectiveWebOfTrustPolicy,
+  type WebOfTrustLookupTarget,
+} from '@/engine/webOfTrust';
 
 export type ProviderStatus = 'idle' | 'searching' | 'done' | 'error';
 
@@ -243,12 +251,55 @@ export function useProviderSearch({
   // the live stream while providers are still resolving.
   const baseResults = data?.results ?? streamed;
 
-  // Apply owner-signed moderation filtering to whatever is visible.
-  // (Additive: until the moderation list loads, nothing is filtered.)
+  // Resolve a NIP-85 subject for each visible result. Nostr-backed results use
+  // the author/indexer account; external results use their NIP-73 web identity.
+  const webOfTrustTargets = useMemo(() => baseResults
+    .map((result) => {
+      const target = nip85TargetForSearchResult(result);
+      return target ? { ...target, key: nip85TargetKey(target) } : null;
+    })
+    .filter((target): target is WebOfTrustLookupTarget => target !== null),
+  [baseResults]);
+  const webOfTrustAssertions = useWebOfTrustAssertions(webOfTrustTargets);
+  const effectiveWebOfTrustPolicy = useMemo(() => {
+    const config = runtime.webOfTrust;
+    const personalPreference = config?.personalProviders?.length ? config.personalPreference : undefined;
+    return config ? resolveEffectiveWebOfTrustPolicy(config.adminPolicy, personalPreference) : null;
+  }, [runtime.webOfTrust]);
+
+  // Hard moderation is applied first and cannot be bypassed by personal WoT.
+  // The trust decision then uses only verified assertions from the selected
+  // platform/personal providers. Unknown provider state follows admin policy.
   const allResults = useMemo(() => {
-    if (!moderationSet) return baseResults;
-    return baseResults.filter((r) => !isHiddenResult(r, moderationSet));
-  }, [baseResults, moderationSet]);
+    const moderated = moderationSet
+      ? baseResults.filter((result) => !isHiddenResult(result, moderationSet))
+      : baseResults;
+    const policy = effectiveWebOfTrustPolicy;
+    if (!policy || policy.mode === 'off') return moderated;
+
+    const decisions = moderated.map((result, index) => {
+      const target = nip85TargetForSearchResult(result);
+      const key = target ? nip85TargetKey(target) : '';
+      const assertion = key ? webOfTrustAssertions.data?.ranks.get(key) : undefined;
+      const kind = target?.kind;
+      const platformReady = kind !== undefined && (webOfTrustAssertions.data?.platformReady.has(kind) ?? false);
+      const personalReady = kind !== undefined && (webOfTrustAssertions.data?.personalReady.has(kind) ?? false);
+      const decision = evaluateWebOfTrust(policy, {
+        platformRank: assertion?.platformRank,
+        personalRank: assertion?.personalRank,
+        platformReady,
+        personalReady,
+      });
+      return { result, index, decision };
+    }).filter((entry) => entry.decision.included);
+
+    // both-first elevates subjects accepted by both configured providers,
+    // without pretending their provider-relative rank numbers are comparable.
+    if (policy.mode === 'combined' && policy.strategy === 'both-first') {
+      decisions.sort((a, b) => b.decision.trustTier - a.decision.trustTier || a.index - b.index);
+    }
+    return decisions.map((entry) => entry.result);
+  }, [baseResults, moderationSet, effectiveWebOfTrustPolicy, webOfTrustAssertions.data]);
   const suggestions = data?.suggestions ?? [];
 
   // Reset provider states when query clears.

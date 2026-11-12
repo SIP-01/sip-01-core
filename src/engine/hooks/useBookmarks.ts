@@ -5,7 +5,7 @@
  * to the user's write relays. Private list content is only opened by the
  * logged-in signer's NIP-44 capability. No private key is handled here.
  */
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 
@@ -85,8 +85,8 @@ export function useBookmarks() {
   const runtime = useEngineRuntime();
   const queryClient = useQueryClient();
   const pubkey = runtime.userPubkey;
-  const readRelays = runtime.userReadRelays ?? [];
-  const writeRelays = runtime.userWriteRelays ?? [];
+  const readRelays = useMemo(() => runtime.userReadRelays ?? [], [runtime.userReadRelays]);
+  const writeRelays = useMemo(() => runtime.userWriteRelays ?? [], [runtime.userWriteRelays]);
 
   const listsQuery = useQuery({
     queryKey: ['nip51-bookmark-lists', pubkey, [...readRelays].sort()],

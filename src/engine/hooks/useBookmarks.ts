@@ -42,6 +42,7 @@ async function queryEvents(
   relays: string[],
   filter: NostrFilter,
   signal?: AbortSignal,
+  requireAllRelays = false,
 ): Promise<NostrEvent[]> {
   if (relays.length === 0) throw new Error('Configure your NIP-65 read relays before using Nostr bookmarks.');
 
@@ -53,7 +54,10 @@ async function queryEvents(
   const successful = settled.filter(
     (result): result is PromiseFulfilledResult<NostrEvent[]> => result.status === 'fulfilled',
   );
-  if (successful.length !== relays.length) throw new Error('Could not read every configured NIP-65 read relay; refusing to update a possibly stale bookmark list.');
+  if (successful.length === 0) throw new Error('Could not read the bookmark list from any configured read relay.');
+  if (requireAllRelays && successful.length !== relays.length) {
+    throw new Error('Could not read every configured NIP-65 read relay; refusing to update a possibly stale bookmark list.');
+  }
 
   const events = new Map<string, NostrEvent>();
   for (const result of successful) {
@@ -160,7 +164,7 @@ export function useBookmarks() {
       kinds: [kind],
       ...(kind === NIP51_BOOKMARK_SET_KIND ? { '#d': [options.dTag!] } : {}),
       limit: 100,
-    });
+    }, undefined, true);
     const existing = latestList(existingEvents, kind, options.dTag);
     const nip44 = runtime.userSigner.nip44;
     if ((visibility === 'private' || existing?.content) && !nip44) {

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildNip85ProviderListDraft,
+  decryptNip85PrivateProviderRows,
   evaluateWebOfTrust,
+  parseNip85ProviderList,
   parseNip85ProviderRow,
   parseNip85RankAssertion,
   resolveEffectiveWebOfTrustPolicy,
@@ -17,6 +20,63 @@ const admin: PlatformWebOfTrustPolicy = {
   allowedStrategies: ['intersection', 'union', 'both-first'],
   unknownBehavior: 'allow',
 };
+
+describe('NIP-85 provider list', () => {
+  it('round-trips public and NIP-44-private provider rows', async () => {
+    const owner = 'b'.repeat(64);
+    const publicProvider = {
+      service: '30382:rank' as const,
+      pubkey: 'a'.repeat(64),
+      relay: 'wss://public.provider',
+    };
+    const privateProvider = {
+      service: '30385:rank' as const,
+      pubkey: 'c'.repeat(64),
+      relay: 'wss://private.provider',
+    };
+    let encrypted = '';
+    const signer = {
+      encrypt: async (peer: string, plaintext: string) => {
+        expect(peer).toBe(owner);
+        encrypted = plaintext;
+        return 'nip44-provider-ciphertext';
+      },
+      decrypt: async (peer: string, ciphertext: string) => {
+        expect(peer).toBe(owner);
+        expect(ciphertext).toBe('nip44-provider-ciphertext');
+        return encrypted;
+      },
+    };
+    const draft = await buildNip85ProviderListDraft(owner, [publicProvider], [privateProvider], signer);
+    expect(draft.kind).toBe(10040);
+    expect(draft.tags).toEqual([['30382:rank', 'a'.repeat(64), 'wss://public.provider/']]);
+
+    const event = {
+      kind: 10040,
+      pubkey: owner,
+      id: 'd'.repeat(64),
+      created_at: 10,
+      tags: draft.tags,
+      content: draft.content,
+      sig: 'e'.repeat(128),
+    };
+    const privateRows = await decryptNip85PrivateProviderRows(event, owner, signer);
+    expect(parseNip85ProviderList(event, owner, privateRows)).toHaveLength(2);
+  });
+
+  it('rejects trying to decrypt another account\'s kind-10040 list', async () => {
+    const signer = { encrypt: async () => '', decrypt: async () => '[]' };
+    await expect(decryptNip85PrivateProviderRows({
+      kind: 10040,
+      pubkey: 'a'.repeat(64),
+      id: 'b'.repeat(64),
+      created_at: 1,
+      tags: [],
+      content: 'ciphertext',
+      sig: 'c'.repeat(128),
+    }, 'd'.repeat(64), signer)).rejects.toThrow('does not belong');
+  });
+});
 
 describe('NIP-85 provider and assertion validation', () => {
   it('parses only supported provider rows with secure relay hints', () => {
@@ -89,6 +149,14 @@ describe('administrator and personal Web-of-Trust policy', () => {
       { enabled: true, mode: 'override', minimumRank: 20 },
     );
     expect(policy.mode).toBe('combined');
+  });
+
+  it('does not let augment-only become personal-only when platform trust is disabled', () => {
+    const policy = resolveEffectiveWebOfTrustPolicy(
+      { ...admin, enabled: false, personalPermission: 'augment-only' },
+      { enabled: true },
+    );
+    expect(policy.mode).toBe('off');
   });
 
   it('allows personal override only when administrators explicitly allow user choice', () => {

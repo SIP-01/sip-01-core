@@ -126,8 +126,6 @@ export function useWebOfTrustAssertions(targets: WebOfTrustLookupTarget[]) {
       const settled = await Promise.allSettled(tasks.map(async (task) => {
         const providerKind = serviceKind(task.provider.service);
         const events = await queryProvider(task.provider, targetList, signal);
-        (task.source === 'platform' ? platformReady : personalReady).add(providerKind);
-
         for (const event of events) {
           if (!verifyEvent(event)) continue;
           const target = targetList.find((candidate) =>
@@ -149,12 +147,23 @@ export function useWebOfTrustAssertions(targets: WebOfTrustLookupTarget[]) {
         }
       }));
 
+      // A source/kind is complete only when every selected provider task
+      // for that assertion kind succeeded. A failed provider must not be
+      // hidden by another provider finishing successfully at the same time.
+      const readiness = new Map<string, boolean>();
       for (let index = 0; index < settled.length; index++) {
-        if (settled[index].status === 'rejected') {
-          const task = tasks[index];
-          const kind = serviceKind(task.provider.service);
-          (task.source === 'platform' ? platformReady : personalReady).delete(kind);
-        }
+        const task = tasks[index];
+        const kind = serviceKind(task.provider.service);
+        if (!targetList.some((target) => target.kind === kind)) continue;
+        const key = task.source + ':' + String(kind);
+        const succeeded = settled[index].status === 'fulfilled';
+        readiness.set(key, (readiness.get(key) ?? true) && succeeded);
+      }
+      for (const [key, ready] of readiness) {
+        if (!ready) continue;
+        const [source, kindText] = key.split(':');
+        const destination = source === 'platform' ? platformReady : personalReady;
+        destination.add(Number(kindText));
       }
 
       return { ranks, platformReady, personalReady } satisfies WebOfTrustLookupResult;

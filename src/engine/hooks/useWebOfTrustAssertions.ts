@@ -89,8 +89,9 @@ async function queryProvider(
 export function useWebOfTrustAssertions(targets: WebOfTrustLookupTarget[]) {
   const runtime = useEngineRuntime();
   const config = runtime.webOfTrust;
+  const personalPreference = config?.personalProviders?.length ? config.personalPreference : undefined;
   const effective = config
-    ? resolveEffectiveWebOfTrustPolicy(config.adminPolicy, config.personalPreference)
+    ? resolveEffectiveWebOfTrustPolicy(config.adminPolicy, personalPreference)
     : null;
 
   const tasks = useMemo<ProviderTask[]>(() => {

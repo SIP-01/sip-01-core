@@ -378,3 +378,55 @@ export function nip85TargetForSearchResult(result: {
 export function nip85TargetKey(target: Nip85RankTarget): string {
   return String(target.kind) + ':' + target.identifier;
 }
+
+
+export interface Nip85ProviderListSigner {
+  encrypt(peerPubkey: string, plaintext: string): Promise<string>;
+  decrypt(peerPubkey: string, ciphertext: string): Promise<string>;
+}
+
+/** Build the user's NIP-85 kind-10040 preferred-provider list. */
+export async function buildNip85ProviderListDraft(
+  ownerPubkey: string,
+  publicProviders: Nip85ProviderReference[],
+  privateProviders: Nip85ProviderReference[],
+  signer: Nip85ProviderListSigner,
+): Promise<{ kind: number; content: string; tags: string[][] }> {
+  if (!HEX_PUBKEY.test(ownerPubkey)) throw new Error('Owner pubkey must be 32-byte hex.');
+
+  const toTag = (provider: Nip85ProviderReference): string[] => {
+    const parsed = parseNip85ProviderRow([provider.service, provider.pubkey, provider.relay]);
+    if (!parsed) throw new Error('Invalid NIP-85 service/provider/relay row.');
+    return [parsed.service, parsed.pubkey, parsed.relay];
+  };
+
+  const tags = publicProviders.map(toTag);
+  const privateTags = privateProviders.map(toTag);
+  const content = privateTags.length > 0
+    ? await signer.encrypt(ownerPubkey.toLowerCase(), JSON.stringify(privateTags))
+    : '';
+
+  return { kind: NIP85_PROVIDER_LIST_KIND, content, tags };
+}
+
+/** Decrypt private provider rows from kind 10040 with the account's NIP-44 signer. */
+export async function decryptNip85PrivateProviderRows(
+  event: NostrEvent,
+  ownerPubkey: string,
+  signer: Nip85ProviderListSigner,
+): Promise<string[][]> {
+  if (event.kind !== NIP85_PROVIDER_LIST_KIND || event.pubkey !== ownerPubkey) {
+    throw new Error('NIP-85 provider list does not belong to the requested account.');
+  }
+  if (!event.content) return [];
+
+  const plaintext = await signer.decrypt(ownerPubkey, event.content);
+  const parsed: unknown = JSON.parse(plaintext);
+  if (!Array.isArray(parsed) || !parsed.every((tag) =>
+    Array.isArray(tag) && tag.length === 3 && tag.every((part) => typeof part === 'string'),
+  )) {
+    throw new Error('Decrypted NIP-85 provider content is not a provider-tag array.');
+  }
+
+  return parsed as string[][];
+}

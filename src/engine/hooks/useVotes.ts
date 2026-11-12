@@ -36,10 +36,11 @@ function getVoteRelay(url: string) {
 
 /** Batch-fetch native and external NIP-25 reactions for visible targets. */
 export function useVoteCounts(targetKeys: string[]) {
+  const runtime = useEngineRuntime();
   const key = targetKeys.slice(0, 20).sort().join(',');
 
   return useQuery({
-    queryKey: ['vote-tallies', key],
+    queryKey: ['vote-tallies', key, runtime.voteAuthorWeights ? [...runtime.voteAuthorWeights.entries()].sort(([a], [b]) => a.localeCompare(b)) : 'raw'],
     queryFn: async ({ signal }) => {
       const keys = key.split(',').filter(Boolean);
       if (keys.length === 0) return new Map<string, VoteTally>();
@@ -66,7 +67,7 @@ export function useVoteCounts(targetKeys: string[]) {
           if (!events.has(event.id)) events.set(event.id, event);
         }
       }
-      return tallyVotes([...events.values()]);
+      return tallyVotes([...events.values()], { authorWeights: runtime.voteAuthorWeights });
     },
     enabled: key.length > 0,
     staleTime: 30_000,

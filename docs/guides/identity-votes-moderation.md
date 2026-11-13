@@ -31,10 +31,12 @@ The auto-indexer (`useSearchIndexer`, driven by `EngineRuntime.autoIndex`) build
 
 ## Votes: anonymous vs attributable
 
-Votes are NIP-25 reactions (kind 7, `content` `"+"`/`"-"`) built by `buildVoteEvent` on a target from `voteTargetFor`:
+Votes follow [NIP-25](https://github.com/nostr-protocol/nips/blob/master/25.md), with [NIP-73](https://github.com/nostr-protocol/nips/blob/master/73.md) identifiers for external web content. `buildVoteEvent` uses the target returned by `voteTargetFor`:
 
-- Nostr-native results → `["e", "<event-id>"]`
-- Web results → `["r", "<normalized-url>"]` (normalized with the SIP-01 normalizer, so the same page tallies together regardless of tracking parameters)
+- **Nostr-native events:** kind `7`, with an `e` tag for the event ID, a `p` tag for its author when known, a `k` tag for its kind when known, and an `a` coordinate when the target is addressable.
+- **External web pages:** kind `17`, with `["k", "web"]` and `["i", "<normalized-url>"]`. The SIP-01 URL normalizer is used so the same page can be tallied consistently.
+
+Do not use the legacy kind-7 `r` URL shape for new web votes. NIP-25 specifies kind `17` and NIP-73 `k`/`i` tags for external content.
 
 The identity model is the host's choice via the runtime:
 
@@ -43,7 +45,7 @@ The identity model is the host's choice via the runtime:
 | **Anonymous** (default) | `voteWithIdentity: false` | The device's built-in indexing identity — pseudonymous, per-device, never the user's npub |
 | **Attributable** | `voteWithIdentity: true` | The host's logged-in user signer — `EngineRuntime.userSigner` is **required** (a NIP-07-style `{ signEvent }` shape, exported as `EngineSigner`); `useVoteActions` throws without it |
 
-Both paths publish to the index relay pool. Tally rule (`tallyVotes`): latest vote per pubkey per target wins, `score = up − down`. The user's own directions persist locally under `sip01:votes` for button state. Hooks: `useVoteCounts(targetKeys)` for batch tallies, `useVoteActions()` → `{ vote, asIdentity, canVoteWithIdentity }`.
+Both paths publish to the index relay pool. Tally rule (`tallyVotes`): the latest valid reaction per pubkey and target wins; timestamp ties are resolved deterministically by event ID. The simple score is `up − down`. Optional host-supplied author weights are clamped to `0..5`; authors without an explicit weight default to `1`. These weights are a core application feature, not a rule imposed by NIP-25. The user's own directions persist locally under `sip01:votes` for button state. Hooks: `useVoteCounts(targetKeys)` for batch tallies, `useVoteActions()` → `{ vote, asIdentity, canVoteWithIdentity }`.
 
 ## Host-injected moderation
 

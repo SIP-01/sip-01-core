@@ -102,6 +102,17 @@ describe('rankByCommunityVotes', () => {
     expect(ranked[0].score).toBe(50);
   });
 
+
+  it('preserves incoming relevance order when no result has a matching vote', () => {
+    const best = result({ id: 'best', score: 10, title: 'Exact phrase' });
+    const lower = result({ id: 'lower', score: 99, title: 'Partial match' });
+    const unrelatedTally = new Map([
+      ['u:https://unrelated.example', { up: 5, down: 0, score: 5, weightedUp: 5, weightedDown: 0, weightedScore: 5 }],
+    ]);
+    const ranked = rankByCommunityVotes([best, lower], unrelatedTally);
+    expect(ranked.map((r) => r.id)).toEqual(['best', 'lower']);
+  });
+
   it('can be disabled without mutating or reordering results', () => {
     const a = result({ id: 'a', score: 40 });
     const b = result({ id: 'b', score: 60 });

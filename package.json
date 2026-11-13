@@ -18,7 +18,8 @@
   ],
   "scripts": {
     "build": "vite build && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
-    "test": "tsc --noEmit && eslint --cache && vitest run --reporter=dot --silent && vite build && echo 'All tests passed!'"
+    "test": "tsc --noEmit && eslint --cache && vitest run --reporter=dot --silent && vite build && echo 'All tests passed!'",
+    "prepare": "npm run build"
   },
   "peerDependencies": {
     "@nostrify/nostrify": "^0.52.2",

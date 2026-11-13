@@ -153,7 +153,7 @@ should be assumed for any derivative, open or closed.
 
 | Axis | Current | Changes when |
 |---|---|---|
-| **SIP-01 document revision** | v1.2 | the spec repo publishes a revision |
+| **SIP-01 document revision** | v1.3 | the spec repo publishes a revision |
 | **Wire schema version** (`v` tag) | `"1"` | only with a spec revision that changes the wire format |
 | **sip-01-core software version** | 0.1.0 (semver, this repo) | any software release — internal improvements must not change wire behavior |
 

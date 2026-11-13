@@ -156,17 +156,26 @@ export function rankByCommunityVotes(
       if (RERANK_EXEMPT.has(result.provider)) return { result, index, score: result.score ?? 50 };
       const target = voteTargetFor(result);
       const tally = target ? tallies.get(target.key) : undefined;
-      if (!tally) return { result, index, score: result.score ?? 50 };
-
-      const weightedScore = tally.weightedScore;
+      const weightedScore = tally?.weightedScore ?? 0;
       const magnitude = Math.min(1, Math.abs(weightedScore) / minVotes);
       const adjustment = weightedScore > 0
         ? maxBoost * magnitude
         : weightedScore < 0
           ? -maxPenalty * magnitude
           : 0;
-      return { result, index, score: (result.score ?? 50) + adjustment };
+
+      // The incoming array is already relevance-ranked. Use its ordinal as
+      // the baseline so community votes refine that ranking instead of
+      // sorting on provider-native score values and undoing query relevance.
+      // Keep the original provider score in the returned result, adjusted
+      // only by the bounded community signal.
+      return {
+        result,
+        index,
+        rankScore: results.length - index + adjustment,
+        score: (result.score ?? 50) + adjustment,
+      };
     })
-    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .sort((a, b) => b.rankScore - a.rankScore || a.index - b.index)
     .map(({ result, score }) => ({ ...result, score }));
 }

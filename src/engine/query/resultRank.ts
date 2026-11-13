@@ -153,7 +153,7 @@ export function rankByCommunityVotes(
 
   return results
     .map((result, index) => {
-      if (RERANK_EXEMPT.has(result.provider)) return { result, index, score: result.score ?? 50 };
+      if (RERANK_EXEMPT.has(result.provider)) return { result, index, rankScore: results.length - index, score: result.score ?? 50 };
       const target = voteTargetFor(result);
       const tally = target ? tallies.get(target.key) : undefined;
       const weightedScore = result.provider === 'keyword-stake' ? 0 : (tally?.weightedScore ?? 0);

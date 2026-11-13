@@ -68,6 +68,17 @@ declarations (`dist/index.d.ts`). `react`, `react-dom`,
 `@tanstack/react-query`, `@nostrify/nostrify`, and `nostr-tools` are peer
 dependencies — the host application supplies them.
 
+
+### Install as a pinned Git dependency
+
+The repository remains private to npm publishing, but hosts can install it from Git at an immutable commit:
+
+```bash
+npm install --save-exact github:SIP-01/sip-01-core#<reviewed-commit-sha>
+```
+
+The Git dependency runs `prepare` and builds `dist/` before the host imports the package. Keep the commit SHA pinned and update it deliberately after reviewing a core release. All peer dependencies must be present in the host application.
+
 ## Public API overview
 
 Everything is exported from the package root (`src/index.ts`):

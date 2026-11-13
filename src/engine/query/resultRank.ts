@@ -139,7 +139,7 @@ export function rankByCommunityVotes(
   tallies: ReadonlyMap<string, VoteTally>,
   options: CommunityVoteRankingOptions = {},
 ): SearchResult[] {
-  if (options.enabled === false || tallies.size === 0 || results.length < 2) return results;
+  if (options.enabled === false || tallies.size === 0 || results.length === 0) return results;
 
   const minVotes = Number.isFinite(options.minVotes)
     ? Math.max(1, Math.min(100, Math.trunc(options.minVotes!)))
@@ -153,6 +153,7 @@ export function rankByCommunityVotes(
 
   return results
     .map((result, index) => {
+      if (RERANK_EXEMPT.has(result.provider)) return { result, index, score: result.score ?? 50 };
       const target = voteTargetFor(result);
       const tally = target ? tallies.get(target.key) : undefined;
       if (!tally) return { result, index, score: result.score ?? 50 };

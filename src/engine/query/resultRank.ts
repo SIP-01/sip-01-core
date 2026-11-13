@@ -151,8 +151,10 @@ export function rankByCommunityVotes(
     ? Math.max(0, Math.min(30, options.maxPenalty!))
     : 9;
 
+  type AdjustedResult = { result: SearchResult; index: number; rankScore: number; score: number };
+
   return results
-    .map((result, index) => {
+    .map<AdjustedResult>((result, index): AdjustedResult => {
       if (RERANK_EXEMPT.has(result.provider)) return { result, index, rankScore: results.length - index, score: result.score ?? 50 };
       const target = voteTargetFor(result);
       const tally = target ? tallies.get(target.key) : undefined;

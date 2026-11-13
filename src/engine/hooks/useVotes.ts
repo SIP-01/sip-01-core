@@ -5,7 +5,7 @@
  */
 import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { finalizeEvent } from 'nostr-tools/pure';
+import { finalizeEvent, verifyEvent } from 'nostr-tools/pure';
 import { type NostrEvent, type NostrFilter } from '@nostrify/nostrify';
 
 import { queryRelayPool, publishToRelayPool, getSearchRelay } from '@/lib/searchRelays';
@@ -70,7 +70,7 @@ export function useVoteCounts(targetKeys: string[]) {
       const events = new Map<string, NostrEvent>();
       for (const batch of settled) {
         for (const event of batch) {
-          if (!events.has(event.id)) events.set(event.id, event);
+          if (verifyEvent(event) && !events.has(event.id)) events.set(event.id, event);
         }
       }
       return [...events.values()];
@@ -151,7 +151,8 @@ export function useVoteActions() {
         tags: template.tags,
         content: template.content,
       });
-      await publishToRelayPool(getIndexRelayUrls(), signedEvent, 5000);
+      const accepted = await publishToRelayPool(getIndexRelayUrls(), signedEvent, 5000);
+      if (accepted === 0) throw new Error('No configured index relay accepted the vote.');
     } else {
       const identity = getIndexerIdentity();
       const signedEvent = finalizeEvent(
@@ -163,12 +164,8 @@ export function useVoteActions() {
         },
         hexToBytes(identity.secretHex),
       );
-      await Promise.allSettled(
-        getIndexRelayUrls().map(async (url) => {
-          const relay = getVoteRelay(url);
-          await relay.event(signedEvent, { signal: AbortSignal.timeout(5000) });
-        }),
-      );
+      const accepted = await publishToRelayPool(getIndexRelayUrls(), signedEvent, 5000);
+      if (accepted === 0) throw new Error('No configured index relay accepted the vote.');
     }
 
     setMyVote(target.key, direction);

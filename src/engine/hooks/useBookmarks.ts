@@ -8,6 +8,7 @@
 import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
+import { verifyEvent } from 'nostr-tools/pure';
 
 import { getSearchRelay, publishToRelayPool } from '@/lib/searchRelays';
 import { useEngineRuntime } from '@/engine/runtime';
@@ -62,7 +63,7 @@ async function queryEvents(
   const events = new Map<string, NostrEvent>();
   for (const result of successful) {
     for (const event of result.value) {
-      if (!events.has(event.id)) events.set(event.id, event);
+      if (verifyEvent(event) && !events.has(event.id)) events.set(event.id, event);
     }
   }
   return [...events.values()];

@@ -5,10 +5,10 @@
  */
 import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { finalizeEvent } from 'nostr-tools/pure';
+import { finalizeEvent, verifyEvent } from 'nostr-tools/pure';
 import { type NostrEvent, type NostrFilter } from '@nostrify/nostrify';
 
-import { queryRelayPool, publishToRelayPool, getSearchRelay } from '@/lib/searchRelays';
+import { queryRelayPool, publishToRelayPool } from '@/lib/searchRelays';
 import { getIndexRelayUrls, getSearchRelayUrls } from '@/lib/appRelays';
 import { getIndexerIdentity } from '@/protocol/indexerIdentity';
 import { useEngineRuntime } from '@/engine/runtime';
@@ -34,10 +34,6 @@ function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   return bytes;
-}
-
-function getVoteRelay(url: string) {
-  return getSearchRelay(url);
 }
 
 /** Batch-fetch reactions, then apply the active platform/personal WoT to voters. */
@@ -70,7 +66,7 @@ export function useVoteCounts(targetKeys: string[]) {
       const events = new Map<string, NostrEvent>();
       for (const batch of settled) {
         for (const event of batch) {
-          if (!events.has(event.id)) events.set(event.id, event);
+          if (verifyEvent(event) && !events.has(event.id)) events.set(event.id, event);
         }
       }
       return [...events.values()];
@@ -151,7 +147,8 @@ export function useVoteActions() {
         tags: template.tags,
         content: template.content,
       });
-      await publishToRelayPool(getIndexRelayUrls(), signedEvent, 5000);
+      const accepted = await publishToRelayPool(getIndexRelayUrls(), signedEvent, 5000);
+      if (accepted === 0) throw new Error('No configured index relay accepted the vote.');
     } else {
       const identity = getIndexerIdentity();
       const signedEvent = finalizeEvent(
@@ -163,12 +160,8 @@ export function useVoteActions() {
         },
         hexToBytes(identity.secretHex),
       );
-      await Promise.allSettled(
-        getIndexRelayUrls().map(async (url) => {
-          const relay = getVoteRelay(url);
-          await relay.event(signedEvent, { signal: AbortSignal.timeout(5000) });
-        }),
-      );
+      const accepted = await publishToRelayPool(getIndexRelayUrls(), signedEvent, 5000);
+      if (accepted === 0) throw new Error('No configured index relay accepted the vote.');
     }
 
     setMyVote(target.key, direction);

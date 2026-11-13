@@ -84,13 +84,22 @@ describe('rankByCommunityVotes', () => {
     expect(ranked.map((r) => r.id)).toEqual(['positive', 'neutral', 'negative']);
   });
 
-  it('uses weighted vote influence and caps the maximum adjustment', () => {
+  it('applies vote score to one result and caps the maximum adjustment', () => {
     const positive = result({ id: 'positive', score: 50 });
     const tallies = new Map([
       ['u:https://example.com/positive', { up: 100, down: 0, score: 100, weightedUp: 1000, weightedDown: 0, weightedScore: 1000 }],
     ]);
     const ranked = rankByCommunityVotes([positive], tallies, { maxBoost: 4 });
     expect(ranked[0].score).toBe(54);
+  });
+
+  it('preserves keyword-stake contractual ranking even when it has a vote tally', () => {
+    const stake = result({ id: 'stake', provider: 'keyword-stake', score: 50 });
+    const tallies = new Map([
+      ['u:https://example.com/stake', { up: 0, down: 100, score: -100, weightedUp: 0, weightedDown: 100, weightedScore: -100 }],
+    ]);
+    const ranked = rankByCommunityVotes([stake], tallies);
+    expect(ranked[0].score).toBe(50);
   });
 
   it('can be disabled without mutating or reordering results', () => {

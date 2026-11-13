@@ -46,6 +46,16 @@ describe('NIP-25 target selection', () => {
     expect(template?.content).toBe('+');
   });
 
+  it('uses NIP-73 URL identity without applying SIP-01 crawl normalization', () => {
+    const target = voteTargetFor({
+      source: 'web',
+      url: 'https://www.example.com/article/?utm_source=campaign&b=2&a=1#section',
+    });
+    const expected = 'https://www.example.com/article/?utm_source=campaign&b=2&a=1';
+    expect(target?.key).toBe('u:' + expected);
+    expect(target?.tags).toContainEqual(['i', expected]);
+  });
+
   it('includes the address coordinate when reacting to an addressable Nostr event', () => {
     const target = voteTargetFor({
       source: 'nostr',

@@ -5,6 +5,7 @@
  */
 import type { NostrEvent } from '@nostrify/nostrify';
 import { normalizeIndexUrl } from '@/protocol/webIndex';
+import { normalizeNip73WebIdentifier } from '@/engine/bookmarks';
 import { readStoredWithLegacy, writeStoredCanonical } from '@/lib/storageMigration';
 
 export const VOTE_KIND = 7;
@@ -13,6 +14,8 @@ export type VoteDirection = 1 | -1;
 
 export interface VoteTarget {
   key: string;
+  /** Legacy kind-7/r URL key, retained only to display historical tallies. */
+  legacyKey?: string;
   kind: typeof VOTE_KIND | typeof EXTERNAL_REACTION_KIND;
   tags: string[][];
 }
@@ -36,10 +39,12 @@ export function voteTargetFor(result: {
     return { key: 'e:' + event.id, kind: VOTE_KIND, tags };
   }
 
-  const normalized = normalizeIndexUrl(result.url);
+  const normalized = normalizeNip73WebIdentifier(result.url);
   if (!normalized) return null;
+  const legacy = normalizeIndexUrl(result.url);
   return {
     key: 'u:' + normalized,
+    ...(legacy && legacy !== normalized ? { legacyKey: 'u:' + legacy } : {}),
     kind: EXTERNAL_REACTION_KIND,
     tags: [['k', 'web'], ['i', normalized]],
   };
@@ -74,9 +79,9 @@ export interface TallyVoteOptions {
   authorWeights?: ReadonlyMap<string, number>;
 }
 
-function urlTargetKey(value: string | undefined): string | null {
+function urlTargetKey(value: string | undefined, legacy = false): string | null {
   if (!value) return null;
-  const normalized = normalizeIndexUrl(value);
+  const normalized = legacy ? normalizeIndexUrl(value) : normalizeNip73WebIdentifier(value);
   return normalized ? 'u:' + normalized : null;
 }
 
@@ -85,7 +90,7 @@ function eventTargetKey(event: NostrEvent): string | null {
     const eventId = event.tags.find(([name]) => name === 'e')?.[1];
     if (eventId) return 'e:' + eventId;
     // Legacy URL reaction. Read this shape, but never write it.
-    return urlTargetKey(event.tags.find(([name]) => name === 'r')?.[1]);
+    return urlTargetKey(event.tags.find(([name]) => name === 'r')?.[1], true);
   }
   if (event.kind === EXTERNAL_REACTION_KIND) {
     const kinds = event.tags.filter(([name]) => name === 'k').map(([, value]) => value);

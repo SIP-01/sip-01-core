@@ -8,7 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { finalizeEvent, verifyEvent } from 'nostr-tools/pure';
 import { type NostrEvent, type NostrFilter } from '@nostrify/nostrify';
 
-import { queryRelayPool, publishToRelayPool, getSearchRelay } from '@/lib/searchRelays';
+import { queryRelayPool, publishToRelayPool } from '@/lib/searchRelays';
 import { getIndexRelayUrls, getSearchRelayUrls } from '@/lib/appRelays';
 import { getIndexerIdentity } from '@/protocol/indexerIdentity';
 import { useEngineRuntime } from '@/engine/runtime';
@@ -34,10 +34,6 @@ function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   return bytes;
-}
-
-function getVoteRelay(url: string) {
-  return getSearchRelay(url);
 }
 
 /** Batch-fetch reactions, then apply the active platform/personal WoT to voters. */

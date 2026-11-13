@@ -53,6 +53,7 @@ describe('NIP-25 target selection', () => {
     });
     const expected = 'https://www.example.com/article/?utm_source=campaign&b=2&a=1';
     expect(target?.key).toBe('u:' + expected);
+    expect(target?.legacyKey).toBe('u:https://example.com/article?a=1&b=2');
     expect(target?.tags).toContainEqual(['i', expected]);
   });
 
@@ -96,6 +97,31 @@ describe('NIP-25 vote tallies', () => {
     expect(result?.down).toBe(1);
     expect(result?.score).toBe(0);
     expect(result?.weightedScore).toBe(1);
+  });
+
+  it('keeps NIP-73 kind-17 tallies separate from legacy SIP-01-normalized kind-7/r tallies', () => {
+    const target = voteTargetFor({
+      source: 'web',
+      url: 'https://www.example.com/article/?utm_source=campaign&b=2&a=1#section',
+    });
+    const modern = {
+      ...eventBase,
+      id: '1'.repeat(64),
+      kind: 17,
+      tags: [['k', 'web'], ['i', 'https://www.example.com/article/?utm_source=campaign&b=2&a=1']],
+      content: '+',
+    };
+    const legacy = {
+      ...eventBase,
+      id: '2'.repeat(64),
+      pubkey: otherAuthor,
+      kind: 7,
+      tags: [['r', 'https://example.com/article?a=1&b=2']],
+      content: '+',
+    };
+    const tallies = tallyVotes([modern, legacy]);
+    expect(tallies.get(target!.key)?.up).toBe(1);
+    expect(tallies.get(target!.legacyKey!)?.up).toBe(1);
   });
 
   it('reads legacy kind-7/r URL reactions but ignores emoji reactions as numeric votes', () => {

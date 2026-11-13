@@ -43,12 +43,21 @@ export interface EngineWebOfTrustConfig {
   personalPreference?: PersonalWebOfTrustPreference;
 }
 
+export interface EngineCommunityRankingConfig {
+  enabled: boolean;
+  minVotes?: number;
+  maxBoost?: number;
+  maxPenalty?: number;
+}
+
 export interface EngineRuntime {
   privacyMode: boolean;
   autoIndex: boolean;
   disabledProviders: string[];
   languageFilter: string[];
   voteWithIdentity: boolean;
+  /** Bounded, NIP-25 community signal applied after moderation and relevance ranking. */
+  communityRanking?: EngineCommunityRankingConfig;
   userSigner?: EngineSigner;
   userPubkey?: string;
   /** Host supplies these from NIP-65 and its private relay policy. */
@@ -67,6 +76,7 @@ export const DEFAULT_ENGINE_RUNTIME: EngineRuntime = {
   disabledProviders: [],
   languageFilter: [],
   voteWithIdentity: false,
+  communityRanking: { enabled: true, minVotes: 3, maxBoost: 6, maxPenalty: 9 },
 };
 
 const EngineRuntimeContext = createContext<EngineRuntime>(DEFAULT_ENGINE_RUNTIME);

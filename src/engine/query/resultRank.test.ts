@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest';
 
-import { sortByQueryRelevance } from './resultRank';
+import { rankByCommunityVotes, sortByQueryRelevance } from './resultRank';
 import type { SearchResult } from '@/engine/providers/types';
 
 function result(partial: Partial<SearchResult> & { id: string }): SearchResult {
@@ -67,5 +67,70 @@ describe('sortByQueryRelevance', () => {
     const newer = result({ id: 'newer', title: 'nostr', snippet: 'nostr', timestamp: 2_000 });
     const sorted = sortByQueryRelevance([older, newer], 'nostr');
     expect(sorted[0].id).toBe('newer');
+  });
+});
+
+
+describe('rankByCommunityVotes', () => {
+  it('moves positively voted links up and negatively voted links down', () => {
+    const positive = result({ id: 'positive', score: 50 });
+    const neutral = result({ id: 'neutral', score: 52 });
+    const negative = result({ id: 'negative', score: 56 });
+    const tallies = new Map([
+      ['u:https://example.com/positive', { up: 4, down: 0, score: 4, weightedUp: 4, weightedDown: 0, weightedScore: 4 }],
+      ['u:https://example.com/negative', { up: 0, down: 4, score: -4, weightedUp: 0, weightedDown: 4, weightedScore: -4 }],
+    ]);
+    const ranked = rankByCommunityVotes([neutral, negative, positive], tallies);
+    expect(ranked.map((r) => r.id)).toEqual(['positive', 'neutral', 'negative']);
+  });
+
+  it('applies vote score to one result and caps the maximum adjustment', () => {
+    const positive = result({ id: 'positive', score: 50 });
+    const tallies = new Map([
+      ['u:https://example.com/positive', { up: 100, down: 0, score: 100, weightedUp: 1000, weightedDown: 0, weightedScore: 1000 }],
+    ]);
+    const ranked = rankByCommunityVotes([positive], tallies, { maxBoost: 4 });
+    expect(ranked[0].score).toBe(54);
+  });
+
+  it('preserves keyword-stake contractual ranking even when it has a vote tally', () => {
+    const stake = result({ id: 'stake', provider: 'keyword-stake', score: 50 });
+    const tallies = new Map([
+      ['u:https://example.com/stake', { up: 0, down: 100, score: -100, weightedUp: 0, weightedDown: 100, weightedScore: -100 }],
+    ]);
+    const ranked = rankByCommunityVotes([stake], tallies);
+    expect(ranked[0].score).toBe(50);
+  });
+
+
+  it('does not let community votes override keyword-stake placement', () => {
+    const stake = result({ id: 'stake', provider: 'keyword-stake', score: 50 });
+    const other = result({ id: 'other', score: 50 });
+    const tallies = new Map([
+      ['u:https://example.com/stake', { up: 0, down: 100, score: -100, weightedUp: 0, weightedDown: 100, weightedScore: -100 }],
+    ]);
+    const ranked = rankByCommunityVotes([stake, other], tallies);
+    expect(ranked.map((r) => r.id)).toEqual(['stake', 'other']);
+    expect(ranked[0].score).toBe(50);
+  });
+
+  it('preserves incoming relevance order when no result has a matching vote', () => {
+    const best = result({ id: 'best', score: 10, title: 'Exact phrase' });
+    const lower = result({ id: 'lower', score: 99, title: 'Partial match' });
+    const unrelatedTally = new Map([
+      ['u:https://unrelated.example', { up: 5, down: 0, score: 5, weightedUp: 5, weightedDown: 0, weightedScore: 5 }],
+    ]);
+    const ranked = rankByCommunityVotes([best, lower], unrelatedTally);
+    expect(ranked.map((r) => r.id)).toEqual(['best', 'lower']);
+  });
+
+  it('can be disabled without mutating or reordering results', () => {
+    const a = result({ id: 'a', score: 40 });
+    const b = result({ id: 'b', score: 60 });
+    const tallies = new Map([
+      ['u:https://example.com/a', { up: 5, down: 0, score: 5, weightedUp: 5, weightedDown: 0, weightedScore: 5 }],
+    ]);
+    const ranked = rankByCommunityVotes([a, b], tallies, { enabled: false });
+    expect(ranked).toEqual([a, b]);
   });
 });

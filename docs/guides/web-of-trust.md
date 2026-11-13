@@ -41,8 +41,10 @@ The selected provider rows are resolved by the host from an administrator-owned 
 
 A kind-10040 list may contain several candidates for the same service, such as different 30382:rank providers. The host settings UI should present those candidates and inject exactly one selected provider per service into the active platform or personal policy. The engine rejects duplicate selected providers for one service rather than averaging unrelated rank values or silently choosing whichever relay replies last.
 
-## Integration boundary: voting is not yet trust-weighted
+## Shared vote ranking
 
-The current core policy evaluates search-result authors and subjects for result filtering/ranking. It does **not** automatically weight NIP-25 votes, and the current 0xSearchstr, 0xPresearchstr, Dsearch and Savedd clients still tally one latest reaction per author without applying NIP-85 rank thresholds. Host applications must not claim that enabling search-result WoT also changes vote influence.
+The core search hook now retrieves verified NIP-25 reactions for visible result targets and applies a bounded community signal after platform moderation, NIP-85 subject filtering, and query relevance. Positive reactions add up to the configured `maxBoost`; negative reactions subtract up to `maxPenalty`; `minVotes` controls how quickly the cap is reached. Defaults are 3 weighted votes, +6 score points, and -9 score points. Hosts may disable this through `EngineRuntime.communityRanking.enabled` or tune the limits.
 
-A future voting integration must query the selected provider for the voter's pubkey (kind 30382 rank assertions), apply the same platform/personal/combined policy and unknown-data behavior, and expose the resulting voter eligibility/weight transparently. Until that ships, vote tallies remain unweighted.
+The vote hook keeps raw up/down counts and weighted up/down totals separate. It selects the latest valid reaction per author/target; when NIP-85 voter assertions are configured, their policy determines the weight. Pending/unavailable assertions follow the configured unknown-state policy rather than inventing trust. Search result moderation hard-blocks still run before community ranking and cannot be reversed by votes.
+
+This behavior is provided by the shared `sip-01-core` `useProviderSearch()` and `useVoteCounts()` hooks. A host that still uses local/duplicated search and vote hooks does **not** inherit this behavior merely by adding the package; it must migrate its result search and vote integration to the shared hooks/runtime. The remaining app migration matrix is tracked separately from the core contract.

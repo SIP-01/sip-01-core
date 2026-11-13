@@ -28,6 +28,7 @@ import { wordCoverage, STOP_WORDS, type QueryTerms } from '@/engine/query/queryM
 import { parseQuery, collectTextLeaves, type ParsedQuery } from '@/engine/query/queryParser';
 import { evaluateQuery, docFromSearchResult } from '@/engine/query/queryEngine';
 import type { SearchResult } from '@/engine/providers/types';
+import { voteTargetFor, type VoteTally } from '@/engine/votes';
 
 /** Providers whose placement is contractual, not relevance-driven. */
 const RERANK_EXEMPT = new Set(['keyword-stake']);
@@ -112,4 +113,71 @@ export function sortByQueryRelevance(results: SearchResult[], query: string): Se
     if (Math.abs(diff) > 5) return diff;
     return (b.timestamp ?? 0) - (a.timestamp ?? 0);
   });
+}
+
+
+export interface CommunityVoteRankingOptions {
+  enabled?: boolean;
+  /** Votes needed to reach the full positive/negative adjustment. */
+  minVotes?: number;
+  /** Maximum score-point boost for trusted positive votes. */
+  maxBoost?: number;
+  /** Maximum score-point penalty for trusted negative votes. */
+  maxPenalty?: number;
+}
+
+/**
+ * Apply explainable, bounded community-vote influence after provider and
+ * query-coverage ranking. Tallies have already deduplicated to the latest
+ * reaction per author and may include NIP-85 voter weights. Positive
+ * weighted votes improve a page's rank; negative weighted votes reduce it.
+ * Raw counts remain available separately in the vote UI. No vote data means
+ * no score change, and this pass never bypasses platform hard moderation.
+ */
+export function rankByCommunityVotes(
+  results: SearchResult[],
+  tallies: ReadonlyMap<string, VoteTally>,
+  options: CommunityVoteRankingOptions = {},
+): SearchResult[] {
+  if (options.enabled === false || tallies.size === 0 || results.length === 0) return results;
+
+  const minVotes = Number.isFinite(options.minVotes)
+    ? Math.max(1, Math.min(100, Math.trunc(options.minVotes!)))
+    : 3;
+  const maxBoost = Number.isFinite(options.maxBoost)
+    ? Math.max(0, Math.min(20, options.maxBoost!))
+    : 6;
+  const maxPenalty = Number.isFinite(options.maxPenalty)
+    ? Math.max(0, Math.min(30, options.maxPenalty!))
+    : 9;
+
+  type AdjustedResult = { result: SearchResult; index: number; rankScore: number; score: number };
+
+  return results
+    .map<AdjustedResult>((result, index): AdjustedResult => {
+      if (RERANK_EXEMPT.has(result.provider)) return { result, index, rankScore: results.length - index, score: result.score ?? 50 };
+      const target = voteTargetFor(result);
+      const tally = target ? tallies.get(target.key) : undefined;
+      const weightedScore = result.provider === 'keyword-stake' ? 0 : (tally?.weightedScore ?? 0);
+      const magnitude = Math.min(1, Math.abs(weightedScore) / minVotes);
+      const adjustment = weightedScore > 0
+        ? maxBoost * magnitude
+        : weightedScore < 0
+          ? -maxPenalty * magnitude
+          : 0;
+
+      // The incoming array is already relevance-ranked. Use its ordinal as
+      // the baseline so community votes refine that ranking instead of
+      // sorting on provider-native score values and undoing query relevance.
+      // Keep the original provider score in the returned result, adjusted
+      // only by the bounded community signal.
+      return {
+        result,
+        index,
+        rankScore: results.length - index + adjustment,
+        score: (result.score ?? 50) + adjustment,
+      };
+    })
+    .sort((a, b) => b.rankScore - a.rankScore || a.index - b.index)
+    .map(({ result, score }) => ({ ...result, score }));
 }

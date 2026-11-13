@@ -17,7 +17,9 @@ import { getProvidersForPrivacy, getProvidersForSource } from '@/engine/provider
 import { classifyQuery, providerAllowlistFor } from '@/engine/query/queryClassify';
 import { parseQuery } from '@/engine/query/queryParser';
 import { applyHardConstraints } from '@/engine/query/queryEngine';
-import { sortByQueryRelevance } from '@/engine/query/resultRank';
+import { rankByCommunityVotes, sortByQueryRelevance } from '@/engine/query/resultRank';
+import { useVoteCounts } from '@/engine/hooks/useVotes';
+import { voteTargetFor } from '@/engine/votes';
 import { isHiddenResult } from '@/engine/moderation';
 import { useSearchIndexer } from '@/engine/hooks/useSearchIndexer';
 import { useEngineRuntime } from '@/engine/runtime';
@@ -250,6 +252,14 @@ export function useProviderSearch({
   // the live stream while providers are still resolving.
   const baseResults = data?.results ?? streamed;
 
+  // Collect community reactions for the visible page/event subjects. The
+  // shared vote hook verifies NIP-25 signatures, deduplicates by author and
+  // applies selected NIP-85 voter trust before this ranking pass.
+  const voteTargetKeys = useMemo(() => baseResults
+    .map((result) => voteTargetFor(result)?.key)
+    .filter((key): key is string => !!key), [baseResults]);
+  const communityVotes = useVoteCounts(voteTargetKeys);
+
   // Resolve a NIP-85 subject for each visible result. Nostr-backed results use
   // the author/indexer account; external results use their NIP-73 web identity.
   const webOfTrustTargets = useMemo(() => baseResults
@@ -311,6 +321,11 @@ export function useProviderSearch({
       },
     }));
   }, [baseResults, moderationSet, effectiveWebOfTrustPolicy, webOfTrustAssertions.data]);
+  const communityRankedResults = useMemo(() => rankByCommunityVotes(
+    allResults,
+    communityVotes.data ?? new Map(),
+    runtime.communityRanking,
+  ), [allResults, communityVotes.data, runtime.communityRanking]);
   const suggestions = data?.suggestions ?? [];
 
   // Reset provider states when query clears.
@@ -326,7 +341,7 @@ export function useProviderSearch({
   }, [activeProviders, providerStates, query]);
 
   const isLoading = providers.some((p) => p.status === 'searching');
-  const isEmpty = query.trim().length > 0 && !isLoading && allResults.length === 0;
+  const isEmpty = query.trim().length > 0 && !isLoading && communityRankedResults.length === 0;
 
   // Auto-index: contribute surfaced pages (SIP-01 kind 39697) + a hashed
   // term signal (kind 30078, no plaintext) to the shared Nostr index.
@@ -345,12 +360,12 @@ export function useProviderSearch({
 
   // Counts per source.
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: allResults.length };
-    for (const r of allResults) {
+    const c: Record<string, number> = { all: communityRankedResults.length };
+    for (const r of communityRankedResults) {
       c[r.source] = (c[r.source] ?? 0) + 1;
     }
     return c as Record<SearchSource | 'all', number>;
-  }, [allResults]);
+  }, [communityRankedResults]);
 
   // Invalidate stale queries when source changes.
   const prevSourceRef = useRef(source);
@@ -364,7 +379,7 @@ export function useProviderSearch({
   }, [source, query, queryClient]);
 
   return {
-    results: allResults,
+    results: communityRankedResults,
     providers,
     isLoading,
     isFetching,

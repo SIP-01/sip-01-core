@@ -347,6 +347,18 @@ describe('parseIndexEvent', () => {
     expect(parseIndexEvent(event)).toBeNull();
   });
 
+  it('normalizes v1.3 role and proto keywords to lowercase', async () => {
+    const template = await buildIndexEvent({
+      url: 'https://example.com/tool',
+      title: 'Example Tool',
+      role: 'Tool',
+      proto: ['MCP', 'HTTP'],
+    });
+    expect(template!.tags).toContainEqual(['role', 'tool']);
+    expect(template!.tags).toContainEqual(['proto', 'mcp']);
+    expect(template!.tags).toContainEqual(['proto', 'http']);
+  });
+
   it('round-trips registered extension tags (spec §9.2)', async () => {
     const sk = generateSecretKey();
     const template = (await buildIndexEvent({

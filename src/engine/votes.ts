@@ -22,7 +22,8 @@ export function voteTargetFor(result: {
   source?: string;
   nostrEvent?: { id: string; kind?: number; pubkey?: string; tags?: string[][] };
 }): VoteTarget | null {
-  // Kind-39697 observations and kind-39701 bookmarks are external web content.
+  // SIP-01 observations and NIP-B0 bookmarks may be native Nostr events;
+  // native-event results use kind 7, while URL-only web results use kind 17.
   if (result.source === 'nostr' && result.nostrEvent?.id) {
     const event = result.nostrEvent;
     const tags: string[][] = [['e', event.id]];

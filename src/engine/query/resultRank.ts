@@ -156,7 +156,7 @@ export function rankByCommunityVotes(
       if (RERANK_EXEMPT.has(result.provider)) return { result, index, score: result.score ?? 50 };
       const target = voteTargetFor(result);
       const tally = target ? tallies.get(target.key) : undefined;
-      const weightedScore = tally?.weightedScore ?? 0;
+      const weightedScore = result.provider === 'keyword-stake' ? 0 : (tally?.weightedScore ?? 0);
       const magnitude = Math.min(1, Math.abs(weightedScore) / minVotes);
       const adjustment = weightedScore > 0
         ? maxBoost * magnitude

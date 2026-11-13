@@ -103,6 +103,17 @@ describe('rankByCommunityVotes', () => {
   });
 
 
+  it('does not let community votes override keyword-stake placement', () => {
+    const stake = result({ id: 'stake', provider: 'keyword-stake', score: 50 });
+    const other = result({ id: 'other', score: 50 });
+    const tallies = new Map([
+      ['u:https://example.com/stake', { up: 0, down: 100, score: -100, weightedUp: 0, weightedDown: 100, weightedScore: -100 }],
+    ]);
+    const ranked = rankByCommunityVotes([stake, other], tallies);
+    expect(ranked.map((r) => r.id)).toEqual(['stake', 'other']);
+    expect(ranked[0].score).toBe(50);
+  });
+
   it('preserves incoming relevance order when no result has a matching vote', () => {
     const best = result({ id: 'best', score: 10, title: 'Exact phrase' });
     const lower = result({ id: 'lower', score: 99, title: 'Partial match' });

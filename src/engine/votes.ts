@@ -77,6 +77,51 @@ export interface VoteTally {
 export interface TallyVoteOptions {
   /** Weights are clamped to 0..5. Unlisted authors have weight 1. */
   authorWeights?: ReadonlyMap<string, number>;
+  /**
+   * Rewrite a stored target key before per-author dedup. Used to fold a
+   * legacy kind-7/r URL onto the NIP-73 key callers look up. Return every
+   * key that should receive the vote. An empty list drops the event.
+   */
+  expandTargetKeys?: (targetKey: string) => readonly string[];
+}
+
+/**
+ * `r` tag values to query for these NIP-73 URL keys. Historical reactions
+ * were stored with SIP-01 index normalization (www/tracking/query order),
+ * which is not the NIP-73 identifier.
+ */
+export function legacyReactionUrls(nip73Urls: readonly string[]): string[] {
+  const urls = new Set<string>();
+  for (const url of nip73Urls) {
+    if (!url) continue;
+    urls.add(url);
+    const legacy = normalizeIndexUrl(url);
+    if (legacy) urls.add(legacy);
+  }
+  return [...urls];
+}
+
+/**
+ * Keys that should display `targetKey`. A legacy index URL is also attributed
+ * to every requested NIP-73 key that normalizes to it. The requested key
+ * itself is kept when it was asked for, so identical identities are unchanged.
+ */
+export function expandLegacyVoteTargets(
+  targetKey: string,
+  requestedKeys: readonly string[],
+): readonly string[] {
+  const requested = new Set(requestedKeys);
+  const extras: string[] = [];
+  if (targetKey.startsWith('u:')) {
+    for (const key of requestedKeys) {
+      if (!key.startsWith('u:') || key === targetKey) continue;
+      const legacy = normalizeIndexUrl(key.slice(2));
+      if (legacy && 'u:' + legacy === targetKey) extras.push(key);
+    }
+  }
+  const own = requested.has(targetKey) ? [targetKey] : [];
+  const destinations = [...own, ...extras];
+  return destinations.length > 0 ? destinations : [targetKey];
 }
 
 function urlTargetKey(value: string | undefined, legacy = false): string | null {
@@ -124,19 +169,23 @@ export function tallyVotes(
     if (event.kind !== VOTE_KIND && event.kind !== EXTERNAL_REACTION_KIND) continue;
     const direction = reactionDirection(event);
     if (direction === null) continue;
-    const targetKey = eventTargetKey(event);
-    if (!targetKey) continue;
+    const storedKey = eventTargetKey(event);
+    if (!storedKey) continue;
+    const destinations = options.expandTargetKeys?.(storedKey) ?? [storedKey];
+    if (destinations.length === 0) continue;
 
     const rawWeight = options.authorWeights?.get(event.pubkey) ?? 1;
     const weight = Number.isFinite(rawWeight) ? Math.min(5, Math.max(0, rawWeight)) : 1;
-    const key = targetKey + '\\u0000' + event.pubkey;
-    const existing = latest.get(key);
-    if (
-      !existing ||
-      event.created_at > existing.createdAt ||
-      (event.created_at === existing.createdAt && event.id > existing.eventId)
-    ) {
-      latest.set(key, { targetKey, direction, createdAt: event.created_at, eventId: event.id, weight });
+    for (const targetKey of destinations) {
+      const key = targetKey + '\\u0000' + event.pubkey;
+      const existing = latest.get(key);
+      if (
+        !existing ||
+        event.created_at > existing.createdAt ||
+        (event.created_at === existing.createdAt && event.id > existing.eventId)
+      ) {
+        latest.set(key, { targetKey, direction, createdAt: event.created_at, eventId: event.id, weight });
+      }
     }
   }
 
@@ -172,9 +221,22 @@ function readMyVotes(): Record<string, number> {
   }
 }
 
+/** Prefer the current key, then a legacy index-normalized URL key. */
+export function rememberedVote(
+  votes: Readonly<Record<string, number>>,
+  targetKey: string,
+): VoteDirection | null {
+  const direct = votes[targetKey];
+  if (direct === 1 || direct === -1) return direct;
+  if (!targetKey.startsWith('u:')) return null;
+  const legacy = normalizeIndexUrl(targetKey.slice(2));
+  if (!legacy) return null;
+  const historical = votes['u:' + legacy];
+  return historical === 1 || historical === -1 ? historical : null;
+}
+
 export function getMyVote(targetKey: string): VoteDirection | null {
-  const value = readMyVotes()[targetKey];
-  return value === 1 || value === -1 ? value : null;
+  return rememberedVote(readMyVotes(), targetKey);
 }
 
 export function setMyVote(targetKey: string, direction: VoteDirection | null): void {

@@ -3,6 +3,9 @@ import {
   EXTERNAL_REACTION_KIND,
   VOTE_KIND,
   buildVoteEvent,
+  expandLegacyVoteTargets,
+  legacyReactionUrls,
+  rememberedVote,
   tallyVotes,
   voteTargetFor,
 } from './votes';
@@ -97,6 +100,65 @@ describe('NIP-25 vote tallies', () => {
     expect(result?.down).toBe(1);
     expect(result?.score).toBe(0);
     expect(result?.weightedScore).toBe(1);
+  });
+
+  it('queries legacy index URLs when reading historical kind-7 reactions', () => {
+    const nip73 = 'https://www.example.com/article/?utm_source=campaign&b=2&a=1';
+    expect(legacyReactionUrls([nip73])).toEqual([
+      nip73,
+      'https://example.com/article?a=1&b=2',
+    ]);
+  });
+
+  it('folds a legacy kind-7 reaction onto the NIP-73 key without double-counting', () => {
+    const target = voteTargetFor({
+      source: 'web',
+      url: 'https://www.example.com/article/?utm_source=campaign&b=2&a=1#section',
+    });
+    const nip73 = 'https://www.example.com/article/?utm_source=campaign&b=2&a=1';
+    const legacyUrl = 'https://example.com/article?a=1&b=2';
+    const legacy = {
+      ...eventBase,
+      id: '1'.repeat(64),
+      pubkey: author,
+      kind: 7,
+      created_at: 10,
+      tags: [['r', legacyUrl]],
+      content: '+',
+    };
+    const modern = {
+      ...eventBase,
+      id: '2'.repeat(64),
+      pubkey: author,
+      kind: 17,
+      created_at: 20,
+      tags: [['k', 'web'], ['i', nip73]],
+      content: '+',
+    };
+    const other = {
+      ...eventBase,
+      id: '3'.repeat(64),
+      pubkey: otherAuthor,
+      kind: 7,
+      created_at: 10,
+      tags: [['r', legacyUrl]],
+      content: '+',
+    };
+    const requested = [target!.key];
+    const tallies = tallyVotes([legacy, modern, other], {
+      expandTargetKeys: (key) => expandLegacyVoteTargets(key, requested),
+    });
+    expect(tallies.get(target!.key)?.up).toBe(2);
+    expect(tallies.get(target!.legacyKey!)).toBeUndefined();
+  });
+
+  it('remembers a vote stored under the legacy index URL', () => {
+    const target = voteTargetFor({
+      source: 'web',
+      url: 'https://www.example.com/article/?utm_source=campaign&b=2&a=1#section',
+    });
+    expect(rememberedVote({ [target!.legacyKey!]: 1 }, target!.key)).toBe(1);
+    expect(rememberedVote({ [target!.key]: -1, [target!.legacyKey!]: 1 }, target!.key)).toBe(-1);
   });
 
   it('keeps NIP-73 kind-17 tallies separate from legacy SIP-01-normalized kind-7/r tallies', () => {

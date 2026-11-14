@@ -17,6 +17,8 @@ import {
   VOTE_KIND,
   EXTERNAL_REACTION_KIND,
   buildVoteEvent,
+  expandLegacyVoteTargets,
+  legacyReactionUrls,
   setMyVote,
   tallyVotes,
   voteTargetFor,
@@ -56,8 +58,9 @@ export function useVoteCounts(targetKeys: string[]) {
       }
       if (urls.length > 0) {
         filters.push({ kinds: [EXTERNAL_REACTION_KIND], '#k': ['web'], '#i': urls, limit: 500 });
-        // Read legacy URL reactions during migration; never publish this shape.
-        filters.push({ kinds: [VOTE_KIND], '#r': urls, limit: 500 });
+        // Kind 7 `r` tags used SIP-01 index normalization, not the NIP-73
+        // identifier. Query both so historical reactions are still returned.
+        filters.push({ kinds: [VOTE_KIND], '#r': legacyReactionUrls(urls), limit: 500 });
       }
       if (filters.length === 0) return [];
 
@@ -100,16 +103,20 @@ export function useVoteCounts(targetKeys: string[]) {
 
   const data = useMemo(() => {
     const events = reactionsQuery.data ?? [];
+    const requestedKeys = key.split(',').filter(Boolean);
+    const tallyOptions = {
+      expandTargetKeys: (targetKey: string) => expandLegacyVoteTargets(targetKey, requestedKeys),
+    };
     if (runtime.voteAuthorWeights) {
-      return tallyVotes(events, { authorWeights: runtime.voteAuthorWeights });
+      return tallyVotes(events, { ...tallyOptions, authorWeights: runtime.voteAuthorWeights });
     }
-    if (!effectivePolicy || effectivePolicy.mode === 'off') return tallyVotes(events);
+    if (!effectivePolicy || effectivePolicy.mode === 'off') return tallyVotes(events, tallyOptions);
 
     const weights = new Map<string, number>();
     for (const event of events) {
       if (weights.has(event.pubkey)) continue;
-      const key = '30382:' + event.pubkey.toLowerCase();
-      const assertion = voterAssertions.data?.ranks.get(key);
+      const voterKey = '30382:' + event.pubkey.toLowerCase();
+      const assertion = voterAssertions.data?.ranks.get(voterKey);
       const decision = evaluateWebOfTrust(effectivePolicy, {
         platformRank: assertion?.platformRank,
         personalRank: assertion?.personalRank,
@@ -118,8 +125,8 @@ export function useVoteCounts(targetKeys: string[]) {
       });
       weights.set(event.pubkey, webOfTrustVoteWeight(decision));
     }
-    return tallyVotes(events, { authorWeights: weights });
-  }, [reactionsQuery.data, runtime.voteAuthorWeights, effectivePolicy, voterAssertions.data]);
+    return tallyVotes(events, { ...tallyOptions, authorWeights: weights });
+  }, [key, reactionsQuery.data, runtime.voteAuthorWeights, effectivePolicy, voterAssertions.data]);
 
   return { ...reactionsQuery, data };
 }

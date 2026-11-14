@@ -133,6 +133,10 @@ export interface CommunityVoteRankingOptions {
  * weighted votes improve a page's rank; negative weighted votes reduce it.
  * Raw counts remain available separately in the vote UI. No vote data means
  * no score change, and this pass never bypasses platform hard moderation.
+ *
+ * Keyword stakes stay in the slots relevance ranking gave them. Votes may
+ * reorder the organic results between those slots, but they cannot move a
+ * result across a stake.
  */
 export function rankByCommunityVotes(
   results: SearchResult[],
@@ -151,33 +155,43 @@ export function rankByCommunityVotes(
     ? Math.max(0, Math.min(30, options.maxPenalty!))
     : 9;
 
-  type AdjustedResult = { result: SearchResult; index: number; rankScore: number; score: number };
+  const adjustmentFor = (result: SearchResult): number => {
+    if (RERANK_EXEMPT.has(result.provider)) return 0;
+    const target = voteTargetFor(result);
+    const weightedScore = target ? (tallies.get(target.key)?.weightedScore ?? 0) : 0;
+    const magnitude = Math.min(1, Math.abs(weightedScore) / minVotes);
+    if (weightedScore > 0) return maxBoost * magnitude;
+    if (weightedScore < 0) return -maxPenalty * magnitude;
+    return 0;
+  };
 
-  return results
-    .map<AdjustedResult>((result, index): AdjustedResult => {
-      if (RERANK_EXEMPT.has(result.provider)) return { result, index, rankScore: results.length - index, score: result.score ?? 50 };
-      const target = voteTargetFor(result);
-      const tally = target ? tallies.get(target.key) : undefined;
-      const weightedScore = result.provider === 'keyword-stake' ? 0 : (tally?.weightedScore ?? 0);
-      const magnitude = Math.min(1, Math.abs(weightedScore) / minVotes);
-      const adjustment = weightedScore > 0
-        ? maxBoost * magnitude
-        : weightedScore < 0
-          ? -maxPenalty * magnitude
-          : 0;
+  const output: SearchResult[] = new Array(results.length);
+  let segmentStart = 0;
 
-      // The incoming array is already relevance-ranked. Use its ordinal as
-      // the baseline so community votes refine that ranking instead of
-      // sorting on provider-native score values and undoing query relevance.
-      // Keep the original provider score in the returned result, adjusted
-      // only by the bounded community signal.
+  const rankSegment = (end: number) => {
+    const length = end - segmentStart;
+    const segment = results.slice(segmentStart, end).map((result, offset) => {
+      const adjustment = adjustmentFor(result);
       return {
         result,
-        index,
-        rankScore: results.length - index + adjustment,
+        index: segmentStart + offset,
+        rankScore: length - offset + adjustment,
         score: (result.score ?? 50) + adjustment,
       };
-    })
-    .sort((a, b) => b.rankScore - a.rankScore || a.index - b.index)
-    .map(({ result, score }) => ({ ...result, score }));
+    });
+    segment.sort((a, b) => b.rankScore - a.rankScore || a.index - b.index);
+    for (let i = 0; i < segment.length; i++) {
+      const item = segment[i];
+      output[segmentStart + i] = { ...item.result, score: item.score };
+    }
+  };
+
+  results.forEach((result, index) => {
+    if (!RERANK_EXEMPT.has(result.provider)) return;
+    rankSegment(index);
+    output[index] = { ...result, score: result.score ?? 50 };
+    segmentStart = index + 1;
+  });
+  rankSegment(results.length);
+  return output;
 }

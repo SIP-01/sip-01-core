@@ -114,6 +114,29 @@ describe('rankByCommunityVotes', () => {
     expect(ranked[0].score).toBe(50);
   });
 
+  it('does not let an upvoted result jump over a keyword stake', () => {
+    const stake = result({ id: 'stake', provider: 'keyword-stake', score: 50 });
+    const voted = result({ id: 'voted', score: 80 });
+    const tallies = new Map([
+      ['u:https://example.com/voted', { up: 3, down: 0, score: 3, weightedUp: 3, weightedDown: 0, weightedScore: 3 }],
+    ]);
+    const ranked = rankByCommunityVotes([stake, voted], tallies);
+    expect(ranked.map((r) => r.id)).toEqual(['stake', 'voted']);
+    expect(ranked[0].score).toBe(50);
+    expect(ranked[1].score).toBe(86);
+  });
+
+  it('reorders organic results beside a keyword stake without crossing it', () => {
+    const stake = result({ id: 'stake', provider: 'keyword-stake', score: 90 });
+    const low = result({ id: 'low', score: 70 });
+    const high = result({ id: 'high', score: 40 });
+    const tallies = new Map([
+      ['u:https://example.com/high', { up: 3, down: 0, score: 3, weightedUp: 3, weightedDown: 0, weightedScore: 3 }],
+    ]);
+    const ranked = rankByCommunityVotes([stake, low, high], tallies);
+    expect(ranked.map((r) => r.id)).toEqual(['stake', 'high', 'low']);
+  });
+
   it('preserves incoming relevance order when no result has a matching vote', () => {
     const best = result({ id: 'best', score: 10, title: 'Exact phrase' });
     const lower = result({ id: 'lower', score: 99, title: 'Partial match' });

@@ -96,6 +96,33 @@ Unknown or unavailable assertion data must be represented as unknown/pending, no
 - Relays must enforce configured event-kind policy consistently across REQ, COUNT, EVENT, and synchronization paths. A relay that stores kind 39697 but drops kind 39701 or 17 must advertise/describe that limitation rather than claiming full ecosystem compatibility.
 - Preserve standard Nostr event validation, size limits, rate limits, and relay policy. Never trust client-supplied ranking values as authoritative.
 
+## 6.1 Capability discovery and agent workflow (SIP-01 v1.3 / ORBSTR)
+
+Keep the event families separate:
+
+- **Kind 39697** is the public web-document observation. Its required wire schema remains `v="1"`. The v1.3 `role` and repeatable `proto` tags are optional discovery hints; the optional NIP-01 `a` tag may point to a separate kind-39698 listing.
+- **Kind 39698** is the draft ORBSTR capability-announcement companion. It describes a publisher's claimed provider class, transports, capability tags, price model and optional endpoint. It is not a task request, invocation receipt, trust assertion, payment authorisation or permission grant.
+- **NIP-89 kind 31990** remains application-handler discovery. **NIP-90** is an optional job-transport adapter only where a provider supports the relevant registered job kind. Neither replaces the internal workflow model.
+
+Use the fixed role vocabulary as provider classes: `agent`, `tool`, `model`, `api`, `compute`, `dataset`, `gateway`. Express specialisations (research, coding, design, debugging, security audit, code review, etc.) as capability/topic tags, not new role values. A discovery query may combine `role:`, `proto:`, `price:`, and multiple `cap:`/`capability:` filters; requested capability tags are hard AND constraints. Unknown or malformed filters must not be silently reinterpreted as a broader permission.
+
+The recommended local orchestration lifecycle is:
+
+`discover → verify → shortlist → approve → invoke → validate → settle → audit`
+
+1. Discover kind 39698 listings separately from kind 39697 evidence and NIP-89 handlers.
+2. Verify the Nostr event id/signature, kind, schema, publisher, required singleton fields, supported values and expiry. Reject malformed, duplicated singleton or expired listings.
+3. Shortlist only providers that meet every required role, capability, protocol and price constraint. Do not silently relax a hard requirement.
+4. Before remote disclosure or cost-bearing activity, show the provider/pubkey, exact endpoint and protocol, data to be sent, intended action, retention implications and maximum cost. Require explicit approval.
+5. Invoke only through a scoped adapter and trusted egress gateway. Parse-time URL validation is not sufficient SSRF protection: validate DNS answers, destination IPs, redirects and connected peer; strip ambient credentials and enforce method, size, deadline and concurrency limits.
+6. Validate result schema, provenance, citations, freshness and task acceptance criteria. A timeout after a non-idempotent action is an unknown outcome; reconcile before retrying.
+7. Independently verify settlement before recording paid work as complete. A `price` tag or a bid does not authorise payment.
+8. Audit the provider/event reference, policy decision, timestamps, outcome and cost without retaining secrets or unnecessary private payloads.
+
+Task inputs, prompts, user documents, credentials, private outputs, workflow state and budgets MUST remain local or travel only through an explicitly approved private transport. Do not put them in kind 39697 observations or public kind 39698 announcements. Treat provider descriptions, retrieved pages and tool outputs as untrusted data, not instructions.
+
+See the [ORBSTR agent workflow guide](https://github.com/SIP-01/Orbstr/blob/main/docs/AGENT-WORKFLOWS.md) and [capability profile](https://github.com/SIP-01/Orbstr/blob/main/spec/CAPABILITY.md).
+
 ## 7. AI integration contract
 
 - AI providers are replaceable adapters behind the shared provider contract. Provider keys and privileged credentials stay server-side or in user-controlled secret storage.
@@ -115,6 +142,8 @@ Every host and infrastructure repo must test the applicable rows before release.
 | NIP-B0 | kind 39701; HTTPS vs HTTP d-tag rules; one d tag; edit same coordinate; first published_at preservation; query by #d |
 | NIP-25/73 | kind 7 native event; kind 17 external URL; + and -; legacy kind-7/r read-only; duplicate and signature handling |
 | NIP-85 | all four assertion subjects; kind 10040 public/private providers; provider-key verification; stale/missing provider behavior; platform/personal/mixed policy; hard-block precedence |
+| ORBSTR kind 39698 | Signature/id verification; required d/v/alt and role/proto/price validation; duplicate-singleton rejection; expiry and withdrawal; role/capability/protocol/price hard filters; deterministic matching; no endpoint invocation; no private task data in public events |
+| SIP-01 v1.3 hints | Optional `role`, repeatable `proto`, and optional kind-39698 `a` pointer are accepted without changing kind-39697 wire `v="1"`; older consumers ignore unknown tags |
 | NIP-50/77/66 | supported_nips discovery; multi-relay query; Negentropy fallback; relay capability validation; untrusted discovery handling |
 | Moderation | NIP-56 reports; NIP-32 labels; NIP-09 deletion semantics; platform hard blocks cannot be bypassed by personal WoT |
 | AI/privacy | no query leakage; no private bookmark leakage; no client-bundled privileged keys; source attribution; provider fallback behavior |

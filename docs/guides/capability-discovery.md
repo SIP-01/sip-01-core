@@ -12,6 +12,42 @@ Checked on **2026-11-07**:
 
 If a later NIP claims 39698, stop publishing it and move. Do not squat silently.
 
+## Role and capability semantics
+
+The kind-39698 role is a stable provider class, not a profession, trust tier or
+specific task:
+
+| Role | Meaning |
+|---|---|
+| `agent` | Planner, coordinator or delegated task executor |
+| `tool` | Bounded callable operation |
+| `model` | Inference, embedding or reranking endpoint |
+| `api` | Domain API or structured service |
+| `compute` | CPU/GPU or other execution capacity |
+| `dataset` | Data collection, corpus or index |
+| `gateway` | Protocol, identity or network bridge |
+
+Use repeatable `t` capability tags for specialisations such as `research`,
+`coding`, `debugging`, `design`, `security-audit` and `code-review`.
+Do not create a new role value for every agent profession. The kind-39697
+`role`/`proto` extension tags on a service web page are optional hints and
+do not change its URL identity, content hash or required schema.
+
+Suggested local filter syntax is `role:tool cap:search proto:mcp`. The
+`cap:` term is a client-side query convention over the capability listing's
+repeatable `t` tags; it is not a new Nostr event tag or wire-schema revision.
+
+## Workflow boundary
+
+Capability discovery is not invocation. Kind 39698 contains public provider
+metadata, not task inputs, prompts, private context, execution results or
+payment authorisation. Keep those in local workflow state or an explicitly
+approved provider transport. Use the staged
+[ORBSTR agent workflow guide](https://github.com/SIP-01/Orbstr/blob/main/docs/AGENT-WORKFLOWS.md)
+for approval gates, invocation safety, output validation, idempotency, budget
+limits and settlement. Do not call a discovered endpoint directly: the
+listing-time URL parser is not an SSRF-safe egress gateway.
+
 ## Why not an existing kind
 
 | Kind | Why it is the wrong record |

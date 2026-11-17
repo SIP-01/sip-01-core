@@ -10,7 +10,7 @@ SIP-01 works only if every implementation derives **byte-identical identifiers**
 - `documentId()` — §3 URL identity: `"widx:" + sha256(normalized_url)[0:32]` (lowercase hex)
 - `contentHash()` — §8 content identity: `sha256(title + "\n" + description)`, absent description treated as `""`
 
-The vectors live in the spec ([SIP-01.md](../SIP-01.md) §13, vendored v1.2; canonical: [`NostrDanish/SIP-01`](https://github.com/NostrDanish/SIP-01)) and are pinned in `src/protocol/webIndex.test.ts`.
+The vectors live in the spec ([SIP-01.md](../SIP-01.md) §13, vendored v1.3; canonical: [`NostrDanish/SIP-01`](https://github.com/NostrDanish/SIP-01)) and are pinned in `src/protocol/webIndex.test.ts`.
 
 ## The §13 test vectors
 
@@ -40,7 +40,7 @@ All six values are independently reproducible with any SHA-256 implementation.
 npx vitest run src/protocol
 ```
 
-That is 45 tests across `webIndex.test.ts` and `indexerIdentity.test.ts`: the vectors above (each URL vector checked twice — once for normalization, once for the `d` derivation), plus build/parse/verify behavior, field caps, tag validation, extension-tag normalization, and round-trip signing. The full gate (`npm run test`) runs them as part of the 253-test suite.
+That is 45 tests across `webIndex.test.ts` and `indexerIdentity.test.ts`: the vectors above (each URL vector checked twice — once for normalization, once for the `d` derivation), plus build/parse/verify behavior, field caps, tag validation, extension-tag normalization, and round-trip signing. The full gate (`npm run test`) runs them with type-checking, lint and build. Check the current CI result for live pass counts; any count in an old audit report is a historical snapshot.
 
 For third-party implementers, the [implementation guide](../IMPLEMENTATION-GUIDE.md#5-test-vectors-run-these-first) carries the same table with a publisher checklist.
 
@@ -60,10 +60,11 @@ const x = await contentHash(title, description); // §8 — sha256(title + '\n' 
 
 ## Extension tags
 
-Beyond the core schema, the reference implementation builds and parses the registered §9.2 extensions: `type`, `platform`, `category`, `network` (keyword-shaped per `EXTENSION_VALUE_RE`, lowercased), `country` (ISO 3166-1 alpha-2, uppercased), and `mime` (lowercased MIME). Conformance rules for extensions (§9.1): they are optional, invalid values are **dropped, never fatal**, and consumers must ignore unknown tags. Experimental tags use the `x-` prefix until registered via a spec PR.
+Beyond the core schema, the reference implementation builds and parses the registered §9.2 extensions: `type`, `platform`, `category`, `network` (keyword-shaped per `EXTENSION_VALUE_RE`, lowercased), `country` (ISO 3166-1 alpha-2, uppercased), `mime` (lowercased MIME), optional `role`, and repeatable `proto`. The v1.3 role/protocol vocabulary belongs to capability discovery; role identifies a provider class, while finer specialisations remain ordinary capability/topic tags. A NIP-01 `a` tag may point from a web observation to a companion kind-39698 capability announcement. Conformance rules for extensions (§9.1): they are optional, invalid values are **dropped, never fatal**, and consumers must ignore unknown tags. Experimental tags use the `x-` prefix until registered via a spec PR.
 
 ## What conformance does NOT cover
 
+- **Kind 39698 capability announcements.** This companion profile is documented separately by ORBSTR; it is not a kind-39697 observation and is not covered by the §13 URL/content hash vectors. See [Capability discovery](../guides/capability-discovery.md).
 - **Kind 16919 crawler/indexer heartbeats.** `useNetworkStats` (`NODE_HEARTBEAT_KIND = 16919`) reads self-reported "this node is alive" heartbeats purely as a network-status display. They are an engine-level signal, **not part of SIP-01** — no spec section defines them, and no conformance depends on them.
 - **The federation contracts** (`0xsearchstr:*` namespaces). They are shared ecosystem conventions frozen for compatibility, not SIP-01 spec content — see [What is SIP-01?](../what-is-sip-01.md#frozen-federation-namespaces).
 - **Ranking, moderation, query syntax.** Deliberately out of protocol scope (spec §1); they are engine decisions.

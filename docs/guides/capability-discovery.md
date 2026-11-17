@@ -4,7 +4,12 @@
 
 This document is **not** a change to SIP-01 kind 39697. Schema `v` of a web observation stays `"1"`. Clients that only understand §1–§20 of SIP-01 can ignore this file.
 
-Checked on **2026-11-07**:
+Checked against the official registry repositories on **2026-11-17**:
+
+- `nostr-protocol/nips` README event-kind table: 39698 is absent.
+- `nostr-protocol/registry-of-kinds` `schema.yaml`: 39698 is absent; 39697 is also absent from that registry.
+
+Therefore kind 39698 remains a **draft, unregistered companion allocation** in this profile. Re-check both upstream registries before publishing or assigning the kind. If a later NIP claims it, stop publishing it and move.
 
 - `nostr-protocol/nips` README event-kind table: 39698 absent. Nearby assigned kinds include 39000–39005, 39089, 39092, 39701.
 - `nostr-protocol/registry-of-kinds` `schema.yaml`: 39698 absent. 39697 is also absent there (SIP-01 is still a draft allocation).

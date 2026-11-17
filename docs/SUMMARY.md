@@ -20,7 +20,7 @@
 * [Protocol conformance](reference/protocol-conformance.md)
 * [Versioning](reference/versioning.md)
 * [Security and privacy](reference/security.md)
-* [SIP-01 specification (vendored v1.2)](SIP-01.md)
+* [SIP-01 specification (vendored v1.3)](SIP-01.md)
 * [SIP-01 implementation guide](IMPLEMENTATION-GUIDE.md)
 
 ## Development
@@ -35,3 +35,4 @@
 * [Extraction map](EXTRACTION-MAP.md)
 * [Query syntax (moved)](SEARCH-QUERIES.md)
 * [Capability discovery](guides/capability-discovery.md)
+* [Agent workflow guide (ORBSTR)](https://github.com/SIP-01/Orbstr/blob/main/docs/AGENT-WORKFLOWS.md)
